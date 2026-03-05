@@ -1,11 +1,16 @@
+import * as dotenv from "dotenv";
+import * as path from "path";
+
+// __dirname is server/out/ at runtime; walk up to find .env in server/ or project root
+dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
+dotenv.config({ path: path.resolve(__dirname, "..", "..", ".env") });
+
 import {
   createConnection,
   ProposedFeatures,
   TextDocuments,
   TextDocumentSyncKind,
   DidChangeConfigurationNotification,
-  DocumentDiagnosticReportKind,
-  type DocumentDiagnosticReport,
   type InitializeParams,
   type InitializeResult,
 } from "vscode-languageserver/node";
@@ -14,7 +19,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 
 import { createSettingsManager } from "./settings";
 import { createDiagnosticsPipeline } from "./diagnosticsPipeline";
-import { createStaticReviewEngine } from "./review/staticEngine";
+import { createOpenAIReviewEngine } from "./review/openaiEngine";
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -40,17 +45,7 @@ connection.onInitialize((params: InitializeParams) => {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
 
-      // We don't use completion in this project right now, but keeping the capability
-      // enabled is fine if you plan to add it back later.
-      completionProvider: {
-        resolveProvider: true,
-      },
-
-      // Pull diagnostics support (via `connection.languages.diagnostics.on(...)`).
-      diagnosticProvider: {
-        interFileDependencies: false,
-        workspaceDiagnostics: false,
-      },
+      // Push-only diagnostics (via `connection.sendDiagnostics(...)`).
     },
   };
 
@@ -77,6 +72,8 @@ connection.onInitialized(() => {
       connection.console.log("Workspace folder change event received.");
     });
   }
+
+  connection.console.log("[ai-review] Server initialized.");
 });
 
 /**
@@ -90,10 +87,16 @@ const settings = createSettingsManager({
 });
 
 /**
- * Review engine (currently static). Later this becomes the real code-review engine.
- * Keeping this as an interface makes it easy to swap out implementations.
+ * Review engine (OpenAI-backed). Keeping this as an interface makes it easy to swap out implementations.
  */
-const reviewEngine = createStaticReviewEngine();
+const reviewEngine = createOpenAIReviewEngine({
+  model: "gpt-4o-mini",
+  logger: {
+    log: (message) => connection.console.log(message),
+    warn: (message) => connection.console.warn(message),
+    error: (message) => connection.console.error(message),
+  },
+});
 
 /**
  * Push-based diagnostics pipeline:
@@ -101,14 +104,14 @@ const reviewEngine = createStaticReviewEngine();
  * - converts review issues -> LSP diagnostics
  * - publishes results
  *
- * Note: We *also* implement pull-based diagnostics below via
- * `connection.languages.diagnostics.on(...)`. Having both is fine while iterating.
+ * This server uses push diagnostics only.
  */
 const diagnosticsPipeline = createDiagnosticsPipeline({
   connection,
   documents,
   settings,
   reviewEngine,
+  debounceWaitMs: 1000,
 });
 
 // Configuration changes may affect diagnostics; settings manager will request a refresh.
@@ -118,47 +121,6 @@ connection.onDidChangeConfiguration((change) => {
   // Since we also publish diagnostics on change events, we proactively republish for
   // all open documents here so the UI updates immediately.
   void diagnosticsPipeline.publishForAllOpenDocuments();
-});
-
-/**
- * Pull diagnostics endpoint (LSP 3.17+).
- * VS Code can ask the server for diagnostics for a given document without us pushing.
- */
-connection.languages.diagnostics.on(async (params) => {
-  const document = documents.get(params.textDocument.uri);
-
-  if (!document) {
-    return {
-      kind: DocumentDiagnosticReportKind.Full,
-      items: [],
-    } satisfies DocumentDiagnosticReport;
-  }
-
-  // Ensure latest diagnostics are published (push channel), but also return a result
-  // for the pull request. This keeps both paths consistent.
-  const issues = await reviewEngine.reviewDocument({
-    uri: document.uri,
-    text: document.getText(),
-  });
-
-  const docSettings = await settings.getDocumentSettings(document.uri);
-
-  // We reuse the conversion helpers via the pipeline indirectly by republishing.
-  // For the pull response, we compute quickly by publishing then returning the same
-  // computed diagnostics via a small local conversion (pipeline also does this).
-  //
-  // If you prefer zero duplication later, expose `computeDiagnostics` from the pipeline.
-  const { reviewIssuesToDiagnostics } = await import("./review/diagnostics");
-  const diagnostics = reviewIssuesToDiagnostics(
-    document,
-    issues,
-    docSettings.maxNumberOfProblems,
-  );
-
-  return {
-    kind: DocumentDiagnosticReportKind.Full,
-    items: diagnostics,
-  } satisfies DocumentDiagnosticReport;
 });
 
 connection.onDidChangeWatchedFiles((_change) => {

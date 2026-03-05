@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "review/clarity",
+      "name": "Clarity",
+      "description": "Unclear intent, confusing logic, or hard-to-follow code. Suggest clearer structure or naming."
+    },
+    {
+      "id": "review/naming",
+      "name": "Naming",
+      "description": "Names that mislead, are overly generic, or hide important meaning."
+    },
+    {
+      "id": "review/error-handling",
+      "name": "Error Handling",
+      "description": "Missing/incorrect error handling, swallowed errors, or brittle assumptions about failure modes."
+    },
+    {
+      "id": "review/security-footgun",
+      "name": "Security Footgun",
+      "description": "Potential security issues like unsafe input handling, injection risks, secrets exposure, or overly-permissive behavior."
+    },
+    {
+      "id": "review/api-contract",
+      "name": "API Contract",
+      "description": "Mismatch between API usage and expected contracts (types, nullability, invariants, or assumptions)."
+    },
+    {
+      "id": "review/complexity",
+      "name": "Complexity",
+      "description": "Unnecessary complexity, deeply nested logic, or code that would benefit from refactoring."
+    },
+    {
+      "id": "review/perf-hotpath",
+      "name": "Performance Hot Path",
+      "description": "Likely performance problems (extra work in loops, repeated allocations, unnecessary I/O) in code that may run often."
+    },
+    {
+      "id": "review/maintainability",
+      "name": "Maintainability",
+      "description": "Hard to extend or change safely; missing separation of concerns, tight coupling, or implicit dependencies."
+    },
+    {
+      "id": "review/testing-gap",
+      "name": "Testing Gap",
+      "description": "Code changes that likely need tests or lack coverage for edge cases."
+    },
+    {
+      "id": "review/docs-mismatch",
+      "name": "Docs Mismatch",
+      "description": "Comments/docs that are outdated, misleading, or missing for non-obvious behavior."
+    }
+  ]
+}

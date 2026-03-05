@@ -93,9 +93,6 @@ export function createSettingsManager(params: {
         globalSettings = defaults;
       }
     }
-
-    // Ask the client to refresh diagnostics since settings may impact validation.
-    connection.languages.diagnostics.refresh();
   }
 
   function getDocumentSettings(resourceUri: string): Thenable<ServerSettings> {
