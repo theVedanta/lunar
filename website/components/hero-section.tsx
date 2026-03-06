@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button"
-import { ArrowRight, Github } from "lucide-react"
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Github } from "lucide-react";
 
 export function HeroSection() {
   return (
@@ -19,7 +19,9 @@ export function HeroSection() {
         </h1>
 
         <p className="mx-auto mb-8 max-w-2xl text-pretty text-lg text-muted-foreground md:text-xl">
-          Lunar runs a code review on every file you open. Same squiggly lines, same Problems panel, same workflow — just with an AI reviewer looking over your shoulder.
+          Lunar runs a code review on every file you open. Same squiggly lines,
+          same Problems panel, same workflow — just with an AI reviewer looking
+          over your shoulder.
         </p>
 
         <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
@@ -27,8 +29,17 @@ export function HeroSection() {
             Get Started
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
-          <Button variant="outline" size="lg" className="w-full sm:w-auto" asChild>
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer">
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full sm:w-auto"
+            asChild
+          >
+            <a
+              href="https://github.com/theVedanta/lunar"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <Github className="mr-2 h-4 w-4" />
               View on GitHub
             </a>
@@ -36,5 +47,5 @@ export function HeroSection() {
         </div>
       </div>
     </section>
-  )
+  );
 }

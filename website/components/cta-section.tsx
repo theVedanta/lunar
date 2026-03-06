@@ -6,7 +6,7 @@ import { Check, Copy, Github } from "lucide-react"
 
 export function CTASection() {
   const [copied, setCopied] = useState(false)
-  const installCommand = "git clone https://github.com/your-username/lunar && cd lunar && npm install"
+  const installCommand = "git clone https://github.com/theVedanta/lunar && cd lunar && npm install"
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(installCommand)
@@ -32,7 +32,7 @@ export function CTASection() {
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button size="lg" asChild>
-              <a href="https://github.com" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/theVedanta/lunar" target="_blank" rel="noopener noreferrer">
                 <Github className="mr-2 h-4 w-4" />
                 View on GitHub
               </a>
