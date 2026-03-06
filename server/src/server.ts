@@ -73,7 +73,7 @@ connection.onInitialized(() => {
     });
   }
 
-  connection.console.log("[ai-review] Server initialized.");
+  connection.console.log("Server initialized.");
 });
 
 /**
@@ -92,9 +92,9 @@ const settings = createSettingsManager({
 const reviewEngine = createOpenAIReviewEngine({
   model: "gpt-4o-mini",
   logger: {
-    log: (message) => connection.console.log(message),
-    warn: (message) => connection.console.warn(message),
-    error: (message) => connection.console.error(message),
+    log: (message) => connection.console.log('[LUNAR] ' + message),
+    warn: (message) => connection.console.warn('[LUNAR] ' + message),
+    error: (message) => connection.console.error('[LUNAR] ' + message),
   },
 });
 

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
 
-import { generateText, Output } from "ai";
+import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { DiagnosticSeverity } from "vscode-languageserver/node";
@@ -19,22 +19,6 @@ interface RulesFile {
   rules: { id: string; name: string; description?: string }[];
 };
 
-const fallbackRules: RulesFile = {
-  version: 1,
-  rules: [
-    { id: "review/clarity", name: "Clarity" },
-    { id: "review/naming", name: "Naming" },
-    { id: "review/error-handling", name: "Error Handling" },
-    { id: "review/security-footgun", name: "Security Footgun" },
-    { id: "review/api-contract", name: "API Contract" },
-    { id: "review/complexity", name: "Complexity" },
-    { id: "review/perf-hotpath", name: "Performance Hot Path" },
-    { id: "review/maintainability", name: "Maintainability" },
-    { id: "review/testing-gap", name: "Testing Gap" },
-    { id: "review/docs-mismatch", name: "Docs Mismatch" },
-  ],
-};
-
 function computeLineCount(text: string): number {
   // Split in a way that counts the last line even if it ends with a newline.
   return text.length === 0 ? 1 : text.split(/\r\n|\r|\n/).length;
@@ -45,10 +29,12 @@ function clampLine1Based(line: number, lineCount: number): number {
   return Math.min(Math.max(1, line), lc);
 }
 
-async function loadRulesFile(): Promise<RulesFile> {
+async function loadRulesFile(logger: ReviewLogger): Promise<RulesFile | null> {
   const now = Date.now();
-  if (cachedRules && now - cachedRules.loadedAtMs < 2000) {
-    return cachedRules.value;
+  if (cachedRules !== undefined) {
+    if (cachedRules === null || now - cachedRules.loadedAtMs < 2000) {
+      return cachedRules?.value ?? null;
+    }
   }
 
   const candidates = [
@@ -62,35 +48,37 @@ async function loadRulesFile(): Promise<RulesFile> {
     path.resolve(process.cwd(), "server/src/review/rules.json"),
   ];
 
+  const rulesSchema = z
+    .object({
+      version: z.number().int().positive(),
+      rules: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            name: z.string().min(1),
+            description: z.string().min(1).optional(),
+          }),
+        )
+        .min(1),
+    })
+    .strict();
+
   for (const p of candidates) {
     try {
       const raw = await readFile(p, "utf8");
-      const parsed = JSON.parse(raw) as unknown;
-      const schema = z
-        .object({
-          version: z.number().int().positive(),
-          rules: z
-            .array(
-              z.object({
-                id: z.string().min(1),
-                name: z.string().min(1),
-                description: z.string().min(1).optional(),
-              }),
-            )
-            .min(1),
-        })
-        .strict();
-
-      const value = schema.parse(parsed);
+      const value = rulesSchema.parse(JSON.parse(raw) as unknown);
       cachedRules = { value, loadedAtMs: now, source: p };
       return value;
     } catch {
-      // ignore and try next candidate
+      // try next candidate
     }
   }
 
-  cachedRules = { value: fallbackRules, loadedAtMs: now, source: "fallback" };
-  return fallbackRules;
+  logger.error(
+    `failed to load rules.json from any candidate path: ${candidates.join(", ")}`,
+  );
+  cachedRules = null;
+  return null;
 }
 
 let cachedRules:
@@ -99,6 +87,7 @@ let cachedRules:
       loadedAtMs: number;
       source: string;
     }
+  | null
   | undefined;
 
 let warnedMissingApiKey = false;
@@ -134,7 +123,7 @@ export function createOpenAIReviewEngine(
         if (!warnedMissingApiKey) {
           warnedMissingApiKey = true;
           logger.warn(
-            "[ai-review] OPENAI_API_KEY is not set; returning no issues",
+            "OPENAI_API_KEY is not set; returning no issues",
           );
         }
         return [];
@@ -144,27 +133,25 @@ export function createOpenAIReviewEngine(
 
       const { uri, text } = params;
       const lineCount = computeLineCount(text);
-      const rulesFile = await loadRulesFile();
+      const rulesFile = await loadRulesFile(logger);
+
+      if (!rulesFile) {
+        return [];
+      }
 
       if (cachedRules && cachedRules.source !== loggedRulesSource) {
         loggedRulesSource = cachedRules.source;
         logger.log(
-          `[ai-review] rules source=${cachedRules.source} rules=${rulesFile.rules.length}`,
+          `rules source=${cachedRules.source} rules=${rulesFile.rules.length}`,
         );
       }
       const ruleIds = Array.from(
         new Set(rulesFile.rules.map((r) => r.id).filter(Boolean)),
-      );
-
-      // If the rules file is unexpectedly empty/bad, fall back to the baked-in list.
-      const effectiveRuleIds =
-        ruleIds.length > 0
-          ? (ruleIds as [string, ...string[]])
-          : (fallbackRules.rules.map((r) => r.id) as [string, ...string[]]);
+      ) as [string, ...string[]];
 
       const modelIssueSchema = z
         .object({
-          ruleId: z.enum(effectiveRuleIds),
+          ruleId: z.enum(ruleIds),
           title: z.string().min(1).optional(),
           message: z.string().min(1),
           severity: severitySchema,
@@ -179,7 +166,6 @@ export function createOpenAIReviewEngine(
             }),
           category: z.string().min(1).optional(),
           tags: z.array(z.string().min(1)).max(10).optional(),
-          helpUrl: z.string().url().optional(),
         })
         .strict();
 
@@ -214,7 +200,7 @@ export function createOpenAIReviewEngine(
 
       const startedAt = Date.now();
       logger.log(
-        `[ai-review] request start uri=${uri} lines=${lineCount} chars=${text.length}`,
+        `request start uri=${uri} lines=${lineCount} chars=${text.length}`,
       );
 
       try {
@@ -229,14 +215,13 @@ export function createOpenAIReviewEngine(
           system:
             "Return only valid JSON that matches the schema. Do not include markdown.",
           prompt,
-          temperature: 0.2,
         });
 
         const object = outputSchema.parse(res.output);
 
         const issues = object.issues;
         logger.log(
-          `[ai-review] request done uri=${uri} issues=${issues.length} ms=${Date.now() - startedAt}`,
+          `request done uri=${uri} issues=${issues.length} ms=${Date.now() - startedAt}`,
         );
 
         const out: ReviewIssue[] = [];
@@ -256,15 +241,21 @@ export function createOpenAIReviewEngine(
             span: { startLine: normalizedStart, endLine: normalizedEnd },
             category: issue.category,
             tags: issue.tags,
-            helpUrl: issue.helpUrl,
           });
         }
 
         return out;
       } catch (error) {
         logger.error(
-          `[ai-review] request failed uri=${uri} error=${String(error)}`,
+          `request failed uri=${uri} error=${String(error)}`,
         );
+          if (NoObjectGeneratedError.isInstance(error)) {
+            logger.log('NoObjectGeneratedError');
+            logger.log(`Cause: ${error.cause}`);
+            logger.log(`Text: ${error.text}`);
+            logger.log(`Response: ${error.response}`);
+            logger.log(`Usage: ${error.usage}`);
+          }
         return [];
       }
     },

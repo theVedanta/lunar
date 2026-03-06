@@ -45,7 +45,6 @@ export function rangeForWholeLines(
  * Notes:
  * - This intentionally keeps the mapping simple. Later you might add:
  *   - `code` from `ruleId`
- *   - `codeDescription` from `helpUrl`
  *   - `tags` (e.g. Unnecessary/Deprecated)
  *   - `relatedInformation`
  */

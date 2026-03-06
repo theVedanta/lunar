@@ -1,0 +1,4 @@
+- The cached rules have a problem of keeping the error for a changed line if the request fails
+- Instead of rules.json, we should use a js or equivalent file
+- The LSP works in VSCode, need Zed and other tools' support (especially the AI ones)
+- 

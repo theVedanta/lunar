@@ -1,6 +1,6 @@
 {
 	"name": "lsp-sample",
-	"description": "A language server example",
+	"description": "A code-review engine for your IDE, surfacing review as LSP diagnostics",
 	"author": "Microsoft Corporation",
 	"license": "MIT",
 	"version": "1.0.0",

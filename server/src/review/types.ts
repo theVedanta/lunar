@@ -51,9 +51,6 @@ export interface ReviewIssue {
 
   /** Optional tag list for future filtering/grouping. */
   tags?: string[];
-
-  /** Optional URL to documentation. */
-  helpUrl?: string;
 }
 
 /**
