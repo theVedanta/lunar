@@ -5,6 +5,8 @@ import * as path from "path";
 dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 dotenv.config({ path: path.resolve(__dirname, "..", "..", ".env") });
 
+import { Effect, Layer } from "effect";
+
 import {
   createConnection,
   ProposedFeatures,
@@ -17,15 +19,19 @@ import {
 
 import { TextDocument } from "vscode-languageserver-textdocument";
 
-import { createSettingsManager } from "./settings";
-import { createDiagnosticsPipeline } from "./diagnosticsPipeline";
-import { createOpenAIReviewEngine } from "./review/openaiEngine";
+import { SettingsManager, makeSettingsManagerLayer } from "./settings";
+import {
+  DiagnosticsPipeline,
+  makeDiagnosticsPipelineLayer,
+} from "./diagnosticsPipeline";
+import { ReviewLogger, ReviewEngine } from "./review/types";
+import { makeOpenAIReviewEngineLayer } from "./review/openaiEngine";
 
-// Create a connection for the server, using Node's IPC as a transport.
-// Also include all preview / proposed LSP features.
+// ---------------------------------------------------------------------------
+// LSP boilerplate (unchanged — these are runtime values, not services)
+// ---------------------------------------------------------------------------
+
 const connection = createConnection(ProposedFeatures.all);
-
-// Create a simple text document manager.
 const documents = new TextDocuments(TextDocument);
 
 let hasConfigurationCapability = false;
@@ -44,8 +50,6 @@ connection.onInitialize((params: InitializeParams) => {
   const result: InitializeResult = {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
-
-      // Push-only diagnostics (via `connection.sendDiagnostics(...)`).
     },
   };
 
@@ -60,7 +64,6 @@ connection.onInitialize((params: InitializeParams) => {
 
 connection.onInitialized(() => {
   if (hasConfigurationCapability) {
-    // Register for all configuration changes.
     connection.client.register(
       DidChangeConfigurationNotification.type,
       undefined,
@@ -74,57 +77,101 @@ connection.onInitialized(() => {
   }
 
   connection.console.log("Server initialized.");
-});
 
-/**
- * Settings management (per-document when supported, otherwise global).
- * This is kept separate so we can expand settings as the review engine grows.
- */
-const settings = createSettingsManager({
-  connection,
-  hasConfigurationCapability,
-  section: "languageServerExample",
-});
+  // ------------------------------------------------------------------
+  // Build the full Effect layer graph and boot the pipeline
+  // ------------------------------------------------------------------
 
-/**
- * Review engine (OpenAI-backed). Keeping this as an interface makes it easy to swap out implementations.
- */
-const reviewEngine = createOpenAIReviewEngine({
-  model: "gpt-4o-mini",
-  logger: {
-    log: (message) => connection.console.log('[LUNAR] ' + message),
-    warn: (message) => connection.console.warn('[LUNAR] ' + message),
-    error: (message) => connection.console.error('[LUNAR] ' + message),
-  },
-});
+  // ReviewLogger — wired to the LSP connection console
+  const ReviewLoggerLive: Layer.Layer<ReviewLogger> = Layer.succeed(
+    ReviewLogger,
+    {
+      log: (message: string) =>
+        Effect.sync(() => connection.console.log("[LUNAR] " + message)),
+      warn: (message: string) =>
+        Effect.sync(() => connection.console.warn("[LUNAR] " + message)),
+      error: (message: string) =>
+        Effect.sync(() => connection.console.error("[LUNAR] " + message)),
+    },
+  );
 
-/**
- * Push-based diagnostics pipeline:
- * - runs the review engine on content changes
- * - converts review issues -> LSP diagnostics
- * - publishes results
- *
- * This server uses push diagnostics only.
- */
-const diagnosticsPipeline = createDiagnosticsPipeline({
-  connection,
-  documents,
-  settings,
-  reviewEngine,
-  debounceWaitMs: 1000,
-});
+  // ReviewEngine (OpenAI-backed)
+  const ReviewEngineLive: Layer.Layer<ReviewEngine, never, ReviewLogger> =
+    makeOpenAIReviewEngineLayer({ model: "gpt-4o-mini" });
 
-// Configuration changes may affect diagnostics; settings manager will request a refresh.
-connection.onDidChangeConfiguration((change) => {
-  settings.onDidChangeConfiguration(change);
+  // SettingsManager
+  const SettingsManagerLive: Layer.Layer<SettingsManager> =
+    makeSettingsManagerLayer({
+      connection,
+      hasConfigurationCapability,
+      section: "languageServerExample",
+    });
 
-  // Since we also publish diagnostics on change events, we proactively republish for
-  // all open documents here so the UI updates immediately.
-  void diagnosticsPipeline.publishForAllOpenDocuments();
-});
+  // DiagnosticsPipeline
+  const DiagnosticsPipelineLive: Layer.Layer<
+    DiagnosticsPipeline,
+    never,
+    ReviewEngine | SettingsManager | ReviewLogger
+  > = makeDiagnosticsPipelineLayer({
+    connection,
+    documents,
+    debounceWaitMs: 1000,
+  });
 
-connection.onDidChangeWatchedFiles((_change) => {
-  connection.console.log("We received a file change event");
+  // Compose all layers into a single self-contained layer that provides
+  // everything the pipeline (and its transitive dependencies) need.
+  const AppLayer: Layer.Layer<
+    DiagnosticsPipeline | SettingsManager | ReviewLogger
+  > = Layer.mergeAll(
+    DiagnosticsPipelineLive,
+    SettingsManagerLive,
+    ReviewLoggerLive,
+  ).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ReviewEngineLive.pipe(Layer.provide(ReviewLoggerLive)),
+        SettingsManagerLive,
+        ReviewLoggerLive,
+      ),
+    ),
+  );
+
+  // Build a runtime from our composed layer and use it for all subsequent
+  // Effect execution.
+  const runtimeEffect = Effect.gen(function* () {
+    // Obtaining the services here forces the layers to be constructed (and
+    // therefore the document-lifecycle event handlers to be registered).
+    const pipeline = yield* DiagnosticsPipeline;
+    const settings = yield* SettingsManager;
+
+    return { pipeline, settings };
+  }).pipe(Effect.provide(AppLayer));
+
+  Effect.runPromise(runtimeEffect).then(
+    ({ pipeline, settings }) => {
+      // Configuration changes may affect diagnostics — republish for all
+      // open documents.
+      connection.onDidChangeConfiguration((change) => {
+        Effect.runSync(settings.onDidChangeConfiguration(change));
+        Effect.runPromise(pipeline.publishForAllOpenDocuments()).catch(
+          (err) => {
+            connection.console.error(
+              `[LUNAR] publishForAllOpenDocuments failed: ${String(err)}`,
+            );
+          },
+        );
+      });
+
+      connection.onDidChangeWatchedFiles((_change) => {
+        connection.console.log("We received a file change event");
+      });
+    },
+    (err) => {
+      connection.console.error(
+        `[LUNAR] Fatal: failed to build Effect runtime: ${String(err)}`,
+      );
+    },
+  );
 });
 
 // Make the text document manager listen on the connection for open/change/close.

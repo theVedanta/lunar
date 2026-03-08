@@ -1,4 +1,9 @@
+import { Context, Data, Effect } from "effect";
 import type { DiagnosticSeverity } from "vscode-languageserver/node";
+
+// ---------------------------------------------------------------------------
+// Domain types
+// ---------------------------------------------------------------------------
 
 /**
  * A stable identifier for a rule in your review engine.
@@ -13,50 +18,108 @@ export type ReviewRuleId = string;
  */
 export interface ReviewLineSpan {
   /** 1-based, inclusive */
-  startLine: number;
+  readonly startLine: number;
   /** 1-based, inclusive */
-  endLine: number;
+  readonly endLine: number;
 }
 
 /**
  * A single issue produced by the review engine for a specific document.
  *
- * Notes:
- * - We keep this independent from LSP `Diagnostic` so the engine can evolve
- *   (store more metadata, change output format, run outside an editor, etc.).
- * - We keep line-based spans for now because it's the simplest "review comment"
- *   model (line or paragraph). We can add character spans later.
+ * Modelled as an Effect `Data.Class` so that instances are structurally
+ * compared by value and integrate well with the rest of the Effect ecosystem.
  */
-export interface ReviewIssue {
+export class ReviewIssue extends Data.Class<{
   /** The document URI this issue applies to. */
-  uri: string;
+  readonly uri: string;
 
   /** Stable rule identifier, e.g. "naming/no-uppercase-acronyms". */
-  ruleId: ReviewRuleId;
+  readonly ruleId: ReviewRuleId;
 
   /** Human-readable title or short name for the rule. */
-  title?: string;
+  readonly title?: string | undefined;
 
   /** Human-readable message to show to the user. */
-  message: string;
+  readonly message: string;
 
   /** LSP diagnostic severity. */
-  severity: DiagnosticSeverity;
+  readonly severity: DiagnosticSeverity;
 
   /** Location for the issue. */
-  span: ReviewLineSpan;
+  readonly span: ReviewLineSpan;
 
   /** Optional category (style, correctness, performance, security, etc.). */
-  category?: string;
+  readonly category?: string | undefined;
 
   /** Optional tag list for future filtering/grouping. */
-  tags?: string[];
+  readonly tags?: readonly string[] | undefined;
+}> {}
+
+// ---------------------------------------------------------------------------
+// Tagged errors
+// ---------------------------------------------------------------------------
+
+/** Raised when a required API key (e.g. OPENAI_API_KEY) is missing. */
+export class MissingApiKeyError extends Data.TaggedError("MissingApiKeyError")<{
+  readonly key: string;
+}> {}
+
+/** Raised when loading the rules file fails. */
+export class RulesLoadError extends Data.TaggedError("RulesLoadError")<{
+  readonly message: string;
+  readonly candidates?: readonly string[] | undefined;
+}> {}
+
+/** Raised when the upstream AI/review provider returns an error. */
+export class ReviewRequestError extends Data.TaggedError("ReviewRequestError")<{
+  readonly uri: string;
+  readonly cause: unknown;
+}> {}
+
+// ---------------------------------------------------------------------------
+// Service interfaces (Context.Tag)
+// ---------------------------------------------------------------------------
+
+export interface ReviewDocumentParams {
+  readonly uri: string;
+  readonly text: string;
 }
 
 /**
- * Represents a "review engine" capable of analyzing a single document and emitting issues.
- * We'll later add project/workspace-level review as well.
+ * The core review engine service.
+ *
+ * Implementations can be backed by a static stub, OpenAI, or any other
+ * provider. Consumers access it via `yield* ReviewEngine`.
+ *
+ * The error channel is typed to the union of errors the engine may raise so
+ * that callers can decide how to handle each case (or let them propagate).
  */
-export interface ReviewEngine {
-  reviewDocument(params: { uri: string; text: string }): Promise<ReviewIssue[]>;
-}
+export class ReviewEngine extends Context.Tag("ReviewEngine")<
+  ReviewEngine,
+  {
+    readonly reviewDocument: (
+      params: ReviewDocumentParams,
+    ) => Effect.Effect<
+      readonly ReviewIssue[],
+      MissingApiKeyError | RulesLoadError | ReviewRequestError
+    >;
+  }
+>() {}
+
+// ---------------------------------------------------------------------------
+// Logger service
+// ---------------------------------------------------------------------------
+
+/**
+ * A simple logger service used throughout the review subsystem.
+ * This is intentionally kept separate from Effect's built-in logging so that
+ * it can be wired directly to `connection.console.*` in the LSP host.
+ */
+export class ReviewLogger extends Context.Tag("ReviewLogger")<
+  ReviewLogger,
+  {
+    readonly log: (message: string) => Effect.Effect<void>;
+    readonly warn: (message: string) => Effect.Effect<void>;
+    readonly error: (message: string) => Effect.Effect<void>;
+  }
+>() {}

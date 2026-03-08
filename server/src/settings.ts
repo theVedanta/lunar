@@ -1,7 +1,12 @@
+import { Context, Effect, Layer, Ref } from "effect";
 import type {
   Connection,
   DidChangeConfigurationParams,
 } from "vscode-languageserver/node";
+
+// ---------------------------------------------------------------------------
+// Settings shape
+// ---------------------------------------------------------------------------
 
 /**
  * Settings shape for the server.
@@ -10,7 +15,7 @@ import type {
  * and the server behavior.
  */
 export interface ServerSettings {
-  maxNumberOfProblems: number;
+  readonly maxNumberOfProblems: number;
 }
 
 /**
@@ -21,106 +26,165 @@ export const defaultSettings: ServerSettings = {
   maxNumberOfProblems: 1000,
 };
 
-export interface SettingsManager {
-  /**
-   * Handle a configuration change notification from the client.
-   * This is usually called inside `connection.onDidChangeConfiguration(...)`.
-   */
-  onDidChangeConfiguration(change: DidChangeConfigurationParams): void;
-
-  /**
-   * Get the current settings for a given document/resource URI.
-   * If the client doesn't support per-resource config, this falls back to global settings.
-   */
-  getDocumentSettings(resourceUri: string): Thenable<ServerSettings>;
-
-  /**
-   * Call when a document is closed to free cached settings.
-   */
-  onDidCloseDocument(resourceUri: string): void;
-}
+// ---------------------------------------------------------------------------
+// SettingsManager service interface
+// ---------------------------------------------------------------------------
 
 /**
- * Creates a settings manager that mirrors the original sample's behavior:
- * - If `workspace/configuration` is supported, it caches per-document settings.
- * - Otherwise it uses a global settings object derived from `change.settings`.
+ * The `SettingsManager` service provides access to per-document (or global)
+ * settings and handles configuration change notifications from the LSP client.
  *
- * The `section` should match the configuration section used by your extension/package.
- * In the original sample, this is `"languageServerExample"`.
+ * Consumers access it via `yield* SettingsManager`.
  */
-export function createSettingsManager(params: {
-  connection: Connection;
-  hasConfigurationCapability: boolean;
-  section?: string;
-  defaults?: ServerSettings;
-}): SettingsManager {
+export class SettingsManager extends Context.Tag("SettingsManager")<
+  SettingsManager,
+  {
+    /**
+     * Handle a configuration change notification from the client.
+     * This is usually called inside `connection.onDidChangeConfiguration(...)`.
+     */
+    readonly onDidChangeConfiguration: (
+      change: DidChangeConfigurationParams,
+    ) => Effect.Effect<void>;
+
+    /**
+     * Get the current settings for a given document/resource URI.
+     * If the client doesn't support per-resource config, this falls back to
+     * global settings.
+     */
+    readonly getDocumentSettings: (
+      resourceUri: string,
+    ) => Effect.Effect<ServerSettings>;
+
+    /**
+     * Call when a document is closed to free cached settings.
+     */
+    readonly onDidCloseDocument: (resourceUri: string) => Effect.Effect<void>;
+  }
+>() {}
+
+// ---------------------------------------------------------------------------
+// Layer construction parameters
+// ---------------------------------------------------------------------------
+
+export interface SettingsManagerConfig {
+  readonly connection: Connection;
+  readonly hasConfigurationCapability: boolean;
+  readonly section?: string;
+  readonly defaults?: ServerSettings;
+}
+
+// ---------------------------------------------------------------------------
+// Layer: SettingsManagerLive
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a live `SettingsManager` layer.
+ *
+ * Internally it uses Effect `Ref`s for mutable state (global settings and
+ * per-document cache) so that all mutations are tracked within the Effect
+ * runtime.
+ *
+ * Because `Connection` and capability flags are runtime values supplied by the
+ * LSP initialization handshake, this is a function that returns a `Layer`
+ * rather than a static `Layer` constant.
+ */
+export const makeSettingsManagerLayer = (
+  config: SettingsManagerConfig,
+): Layer.Layer<SettingsManager> => {
   const {
     connection,
     hasConfigurationCapability,
     section = "languageServerExample",
     defaults = defaultSettings,
-  } = params;
+  } = config;
 
-  // Global settings used when per-resource config isn't available.
-  let globalSettings: ServerSettings = defaults;
+  return Layer.effect(
+    SettingsManager,
+    Effect.gen(function* () {
+      // Global settings ref — used when per-resource config isn't available.
+      const globalSettingsRef = yield* Ref.make<ServerSettings>(defaults);
 
-  // Cache the settings of all open documents.
-  const documentSettings = new Map<string, Thenable<ServerSettings>>();
+      // Per-document settings cache.
+      // Values are `Promise<ServerSettings>` to match the LSP API shape which
+      // returns a `Thenable` from `workspace.getConfiguration`.
+      const documentSettingsRef = yield* Ref.make<
+        Map<string, Promise<ServerSettings>>
+      >(new Map());
 
-  function onDidChangeConfiguration(
-    change: DidChangeConfigurationParams,
-  ): void {
-    if (hasConfigurationCapability) {
-      // Reset all cached document settings; they will be re-fetched lazily.
-      documentSettings.clear();
-    } else {
-      // When configuration capability isn't present, VS Code sends all settings in this payload.
-      // We read from the configured section name if it exists.
-      const settingsRecord = change.settings as
-        | Record<string, unknown>
-        | undefined;
-      const sectionValue = settingsRecord?.[section];
+      // ------------------------------------------------------------------
+      // onDidChangeConfiguration
+      // ------------------------------------------------------------------
+      const onDidChangeConfiguration = (
+        change: DidChangeConfigurationParams,
+      ): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          if (hasConfigurationCapability) {
+            // Reset all cached document settings; they will be re-fetched lazily.
+            yield* Ref.set(documentSettingsRef, new Map());
+          } else {
+            const settingsRecord = change.settings as
+              | Record<string, unknown>
+              | undefined;
+            const sectionValue = settingsRecord?.[section];
 
-      // We accept either a full `ServerSettings` object under the section key,
-      // or fall back to defaults if the payload isn't shaped as expected.
-      if (typeof sectionValue === "object" && sectionValue !== null) {
-        const s = sectionValue as Partial<ServerSettings>;
-        globalSettings = {
-          maxNumberOfProblems:
-            s.maxNumberOfProblems ?? defaults.maxNumberOfProblems,
-        };
-      } else {
-        globalSettings = defaults;
-      }
-    }
-  }
+            if (typeof sectionValue === "object" && sectionValue !== null) {
+              const s = sectionValue as Partial<ServerSettings>;
+              yield* Ref.set(globalSettingsRef, {
+                maxNumberOfProblems:
+                  s.maxNumberOfProblems ?? defaults.maxNumberOfProblems,
+              });
+            } else {
+              yield* Ref.set(globalSettingsRef, defaults);
+            }
+          }
+        });
 
-  function getDocumentSettings(resourceUri: string): Thenable<ServerSettings> {
-    if (!hasConfigurationCapability) {
-      return Promise.resolve(globalSettings);
-    }
+      // ------------------------------------------------------------------
+      // getDocumentSettings
+      // ------------------------------------------------------------------
+      const getDocumentSettings = (
+        resourceUri: string,
+      ): Effect.Effect<ServerSettings> =>
+        Effect.gen(function* () {
+          if (!hasConfigurationCapability) {
+            return yield* Ref.get(globalSettingsRef);
+          }
 
-    const existing = documentSettings.get(resourceUri);
-    if (existing) {
-      return existing;
-    }
+          const cache = yield* Ref.get(documentSettingsRef);
+          const existing = cache.get(resourceUri);
+          if (existing) {
+            return yield* Effect.promise(() => existing);
+          }
 
-    const fetched = connection.workspace.getConfiguration({
-      scopeUri: resourceUri,
-      section,
-    }) as Thenable<ServerSettings>;
+          const fetched = connection.workspace.getConfiguration({
+            scopeUri: resourceUri,
+            section,
+          }) as Promise<ServerSettings>;
 
-    documentSettings.set(resourceUri, fetched);
-    return fetched;
-  }
+          // Store the promise in the cache
+          const newCache = new Map(cache);
+          newCache.set(resourceUri, fetched);
+          yield* Ref.set(documentSettingsRef, newCache);
 
-  function onDidCloseDocument(resourceUri: string): void {
-    documentSettings.delete(resourceUri);
-  }
+          return yield* Effect.promise(() => fetched);
+        });
 
-  return {
-    onDidChangeConfiguration,
-    getDocumentSettings,
-    onDidCloseDocument,
-  };
-}
+      // ------------------------------------------------------------------
+      // onDidCloseDocument
+      // ------------------------------------------------------------------
+      const onDidCloseDocument = (resourceUri: string): Effect.Effect<void> =>
+        Ref.update(documentSettingsRef, (cache) => {
+          const newCache = new Map(cache);
+          newCache.delete(resourceUri);
+          return newCache;
+        });
+
+      return {
+        onDidChangeConfiguration,
+        getDocumentSettings,
+        onDidCloseDocument,
+      };
+    }),
+  );
+};

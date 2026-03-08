@@ -1,7 +1,13 @@
 import type { Diagnostic, Range } from "vscode-languageserver/node";
 import type { TextDocument } from "vscode-languageserver-textdocument";
 
-import type { ReviewIssue } from "./types";
+import { Effect } from "effect";
+
+import { ReviewIssue } from "./types";
+
+// ---------------------------------------------------------------------------
+// Pure helpers
+// ---------------------------------------------------------------------------
 
 function clampLine(line0Based: number, lineCount: number): number {
   if (lineCount <= 0) {
@@ -42,11 +48,7 @@ export function rangeForWholeLines(
 /**
  * Convert a single `ReviewIssue` into an LSP `Diagnostic`.
  *
- * Notes:
- * - This intentionally keeps the mapping simple. Later you might add:
- *   - `code` from `ruleId`
- *   - `tags` (e.g. Unnecessary/Deprecated)
- *   - `relatedInformation`
+ * This is a pure function — no side-effects, no service requirements.
  */
 export function reviewIssueToDiagnostic(
   textDocument: TextDocument,
@@ -68,10 +70,12 @@ export function reviewIssueToDiagnostic(
 /**
  * Convert multiple issues into LSP diagnostics for a given document.
  * If `maxDiagnostics` is provided, the output is truncated to that size.
+ *
+ * Pure function — no dependencies required.
  */
 export function reviewIssuesToDiagnostics(
   textDocument: TextDocument,
-  issues: ReviewIssue[],
+  issues: readonly ReviewIssue[],
   maxDiagnostics?: number,
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -85,3 +89,22 @@ export function reviewIssuesToDiagnostics(
 
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Effect-aware helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Effect-wrapped variant of `reviewIssuesToDiagnostics`.
+ *
+ * Wraps the pure conversion in `Effect.sync` so it can be composed inside
+ * generator-based Effect pipelines without breaking out of the effect world.
+ */
+export const reviewIssuesToDiagnosticsEffect = (
+  textDocument: TextDocument,
+  issues: readonly ReviewIssue[],
+  maxDiagnostics?: number,
+): Effect.Effect<Diagnostic[]> =>
+  Effect.sync(() =>
+    reviewIssuesToDiagnostics(textDocument, issues, maxDiagnostics),
+  );
