@@ -13,13 +13,13 @@ export function Navbar() {
       <nav className="container mx-auto flex h-16 items-center justify-between px-4">
         <a href="/" className="flex items-center gap-2">
           <Image
-            src="/logo/logo.png"
+            src="/logo/logo-full.png"
             width={1000}
             height={1000}
-            className="w-10 h-auto"
+            className="w-32 h-auto"
             alt="logo"
           />
-          <span className="font-semibold text-foreground">Lunar</span>
+          {/*<span className="font-semibold text-foreground">Lunar</span>*/}
         </a>
 
         <div className="hidden items-center gap-6 md:flex">
@@ -36,10 +36,10 @@ export function Navbar() {
             How it Works
           </a>
           <a
-            href="#docs"
+            href="#waitlist"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            Docs
+            Waitlist
           </a>
         </div>
 
@@ -54,7 +54,9 @@ export function Navbar() {
               GitHub
             </a>
           </Button>
-          <Button size="sm">Get Started</Button>
+          <Button size="sm" asChild>
+            <a href="#waitlist">Get launch updates</a>
+          </Button>
         </div>
 
         <button
@@ -82,10 +84,10 @@ export function Navbar() {
               How it Works
             </a>
             <a
-              href="#docs"
+              href="#waitlist"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              Docs
+              Waitlist
             </a>
             <div className="flex flex-col gap-2 pt-2">
               <Button variant="outline" size="sm" asChild>
@@ -98,7 +100,9 @@ export function Navbar() {
                   GitHub
                 </a>
               </Button>
-              <Button size="sm">Get Started</Button>
+              <Button size="sm" asChild>
+                <a href="#waitlist">Get launch updates</a>
+              </Button>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Info, Lightbulb } from "lucide-react"
+import { AlertCircle, AlertTriangle, Info, Lightbulb } from "lucide-react";
 
 const severityLevels = [
   {
@@ -6,43 +6,73 @@ const severityLevels = [
     icon: AlertCircle,
     color: "text-destructive",
     bg: "bg-destructive/10",
-    description: "High-impact issue — security risk, broken contract, data loss potential",
+    description:
+      "High-impact issue — security risk, broken contract, data loss potential",
   },
   {
     level: "Warning",
     icon: AlertTriangle,
     color: "text-warning",
-    bg: "bg-warning/10",
-    description: "Should be fixed — logic smell, missing error handling, confusing code",
+    bg: "bg-amber-400/10",
+    description:
+      "Should be fixed — logic smell, missing error handling, confusing code",
   },
   {
     level: "Info",
     icon: Info,
     color: "text-info",
-    bg: "bg-info/10",
-    description: "Worth considering — maintainability, testability, documentation gaps",
+    bg: "bg-sky-400/10",
+    description:
+      "Worth considering — maintainability, testability, documentation gaps",
   },
   {
     level: "Hint",
     icon: Lightbulb,
-    color: "text-muted-foreground",
-    bg: "bg-muted/50",
+    color: "text-foreground",
+    bg: "bg-emerald-400/20",
     description: "Low-priority suggestion — naming, minor clarity improvement",
   },
-]
+];
 
 const rules = [
-  { code: "review/clarity", description: "Unclear intent, confusing control flow" },
+  {
+    code: "review/clarity",
+    description: "Unclear intent, confusing control flow",
+  },
   { code: "review/naming", description: "Misleading or overly generic names" },
-  { code: "review/error-handling", description: "Swallowed exceptions, missing error paths" },
-  { code: "review/security-footgun", description: "Injection risks, exposed secrets, unsafe operations" },
-  { code: "review/api-contract", description: "Type mismatches, nullability violations, broken invariants" },
-  { code: "review/complexity", description: "Deep nesting, functions that need decomposition" },
-  { code: "review/perf-hotpath", description: "Redundant work in loops, unnecessary allocations or I/O" },
-  { code: "review/maintainability", description: "Tight coupling, implicit dependencies, hidden state" },
-  { code: "review/testing-gap", description: "Logic that is likely untested and hard to test" },
-  { code: "review/docs-mismatch", description: "Comments that contradict the code, missing critical docs" },
-]
+  {
+    code: "review/error-handling",
+    description: "Swallowed exceptions, missing error paths",
+  },
+  {
+    code: "review/security-footgun",
+    description: "Injection risks, exposed secrets, unsafe operations",
+  },
+  {
+    code: "review/api-contract",
+    description: "Type mismatches, nullability violations, broken invariants",
+  },
+  {
+    code: "review/complexity",
+    description: "Deep nesting, functions that need decomposition",
+  },
+  {
+    code: "review/perf-hotpath",
+    description: "Redundant work in loops, unnecessary allocations or I/O",
+  },
+  {
+    code: "review/maintainability",
+    description: "Tight coupling, implicit dependencies, hidden state",
+  },
+  {
+    code: "review/testing-gap",
+    description: "Logic that is likely untested and hard to test",
+  },
+  {
+    code: "review/docs-mismatch",
+    description: "Comments that contradict the code, missing critical docs",
+  },
+];
 
 export function RulesSection() {
   return (
@@ -53,21 +83,31 @@ export function RulesSection() {
             Fixed ruleset. No hallucinations.
           </h2>
           <p className="text-lg text-muted-foreground">
-            The AI reviews against a defined set of 10 rules. It cannot hallucinate rule IDs — you always know exactly what it's checking.
+            The AI reviews against a defined set of 10 rules. It cannot
+            hallucinate rule IDs — you always know exactly what it's checking.
           </p>
         </div>
 
         {/* Severity Levels */}
         <div className="mx-auto mb-12 max-w-4xl">
-          <h3 className="mb-6 text-center text-xl font-semibold text-foreground">Severity Levels</h3>
+          <h3 className="mb-6 text-center text-xl font-semibold text-foreground">
+            Severity Levels
+          </h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {severityLevels.map((item) => (
-              <div key={item.level} className={`rounded-lg border border-border ${item.bg} p-4`}>
+              <div
+                key={item.level}
+                className={`rounded-lg border border-border ${item.bg} p-4`}
+              >
                 <div className="mb-2 flex items-center gap-2">
                   <item.icon className={`h-5 w-5 ${item.color}`} />
-                  <span className={`font-semibold ${item.color}`}>{item.level}</span>
+                  <span className={`font-semibold ${item.color}`}>
+                    {item.level}
+                  </span>
                 </div>
-                <p className="text-sm text-muted-foreground">{item.description}</p>
+                <p className="text-sm text-muted-foreground">
+                  {item.description}
+                </p>
               </div>
             ))}
           </div>
@@ -75,7 +115,9 @@ export function RulesSection() {
 
         {/* Rules Table */}
         <div className="mx-auto max-w-3xl">
-          <h3 className="mb-6 text-center text-xl font-semibold text-foreground">Review Rules</h3>
+          <h3 className="mb-6 text-center text-xl font-semibold text-foreground">
+            Review Rules
+          </h3>
           <div className="overflow-hidden rounded-lg border border-border bg-card">
             <div className="grid grid-cols-[auto_1fr] border-b border-border bg-secondary/50 text-sm font-medium text-foreground">
               <div className="border-r border-border px-4 py-3">Rule</div>
@@ -91,12 +133,14 @@ export function RulesSection() {
                     {rule.code}
                   </code>
                 </div>
-                <div className="px-4 py-3 text-muted-foreground">{rule.description}</div>
+                <div className="px-4 py-3 text-muted-foreground">
+                  {rule.description}
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
     </section>
-  )
+  );
 }

@@ -1,11 +1,12 @@
-import { Navbar } from "@/components/navbar"
-import { HeroSection } from "@/components/hero-section"
-import { CodeEditorPreview } from "@/components/code-editor-preview"
-import { FeaturesSection } from "@/components/features-section"
-import { RulesSection } from "@/components/rules-section"
-import { HowItWorks } from "@/components/how-it-works"
-import { CTASection } from "@/components/cta-section"
-import { Footer } from "@/components/footer"
+import { Navbar } from "@/components/navbar";
+import { HeroSection } from "@/components/hero-section";
+import { CodeEditorPreview } from "@/components/code-editor-preview";
+import { FeaturesSection } from "@/components/features-section";
+import { RulesSection } from "@/components/rules-section";
+import { HowItWorks } from "@/components/how-it-works";
+import { MCPComparisonSection } from "@/components/mcp-comparison-section";
+import { CTASection } from "@/components/cta-section";
+import { Footer } from "@/components/footer";
 
 export default function Home() {
   return (
@@ -18,8 +19,9 @@ export default function Home() {
       <FeaturesSection />
       <RulesSection />
       <HowItWorks />
+      <MCPComparisonSection />
       <CTASection />
       <Footer />
     </main>
-  )
+  );
 }

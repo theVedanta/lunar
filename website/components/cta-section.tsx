@@ -1,48 +1,55 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Check, Copy, Github } from "lucide-react"
+import { Mail, Github, ArrowRight } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 
 export function CTASection() {
-  const [copied, setCopied] = useState(false)
-  const installCommand = "git clone https://github.com/theVedanta/lunar && cd lunar && npm install"
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(installCommand)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   return (
     <section className="border-t border-border bg-secondary/20 py-16 md:py-24">
       <div className="container mx-auto px-4">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="mb-4 text-3xl font-bold text-foreground md:text-4xl">Start reviewing as you write</h2>
-          <p className="mb-8 text-lg text-muted-foreground">
-            Requires Node.js 18+, VS Code, and an OpenAI API key.
-          </p>
-
-          <div className="mx-auto mb-8 flex max-w-xl items-center gap-2 rounded-lg border border-border bg-card p-2">
-            <code className="flex-1 overflow-x-auto px-3 font-mono text-xs text-foreground sm:text-sm">{installCommand}</code>
-            <Button variant="ghost" size="sm" onClick={handleCopy} className="shrink-0">
-              {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-            </Button>
+        <div className="mx-auto max-w-3xl rounded-3xl border border-border bg-card px-6 py-10 text-center shadow-xl shadow-primary/5 sm:px-10">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+            <Mail className="h-3.5 w-3.5" />
+            Launch waitlist
           </div>
 
-          <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <h2 className="text-balance text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+            Be first to hear when Lunar rolls out
+          </h2>
+
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+            Lunar is built for fast, editor-native review loops. Join the
+            waitlist to get launch updates, early access news, and product
+            announcements.
+          </p>
+
+          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button size="lg" asChild>
-              <a href="https://github.com/theVedanta/lunar" target="_blank" rel="noopener noreferrer">
+              <a href="#waitlist">
+                Join the waitlist
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </a>
+            </Button>
+
+            <Button variant="outline" size="lg" asChild>
+              <a
+                href="https://github.com/theVedanta/lunar"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <Github className="mr-2 h-4 w-4" />
                 View on GitHub
               </a>
             </Button>
-            <Button variant="outline" size="lg">
-              Read the Docs
-            </Button>
           </div>
+
+          <p className="mt-6 text-sm text-muted-foreground">
+            No PR review queue required. Just your editor, your code, and
+            immediate feedback.
+          </p>
         </div>
       </div>
     </section>
-  )
+  );
 }

@@ -1,7 +1,8 @@
 {
-  "name": "my-project",
+  "name": "lunar-website",
   "version": "0.1.0",
   "private": true,
+  "description": "Marketing site for Lunar with an Airtable-backed launch waitlist signup form.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
