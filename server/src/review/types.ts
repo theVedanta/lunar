@@ -83,6 +83,8 @@ export class ReviewRequestError extends Data.TaggedError("ReviewRequestError")<{
 export interface ReviewDocumentParams {
   readonly uri: string;
   readonly text: string;
+  /** Workspace root passed to the MCP filesystem server for file access. */
+  readonly workspaceRoot?: string;
 }
 
 /**

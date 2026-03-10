@@ -1,5 +1,5 @@
 import * as dotenv from "dotenv";
-import * as path from "path";
+import * as path from "node:path";
 
 // __dirname is server/out/ at runtime; walk up to find .env in server/ or project root
 dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
@@ -26,6 +26,7 @@ import {
 } from "./diagnosticsPipeline";
 import { ReviewLogger, ReviewEngine } from "./review/types";
 import { makeOpenAIReviewEngineLayer } from "./review/openaiEngine";
+import { MCPClient, makeMCPClientLayer } from "./review/mcpClient";
 
 // ---------------------------------------------------------------------------
 // LSP boilerplate (unchanged — these are runtime values, not services)
@@ -37,6 +38,9 @@ const documents = new TextDocuments(TextDocument);
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 
+// Workspace root resolved from InitializeParams; used to scope MCP filesystem access.
+let workspaceRoot: string | undefined;
+
 connection.onInitialize((params: InitializeParams) => {
   const capabilities = params.capabilities;
 
@@ -46,6 +50,23 @@ connection.onInitialize((params: InitializeParams) => {
   hasWorkspaceFolderCapability = !!(
     capabilities.workspace && !!capabilities.workspace.workspaceFolders
   );
+
+  // Resolve workspace root from the first workspace folder or rootUri/rootPath
+  const firstFolder = params.workspaceFolders?.[0];
+  if (firstFolder) {
+    // workspaceFolders URIs are file:// URIs
+    const uri = firstFolder.uri;
+    workspaceRoot = uri.startsWith("file://")
+      ? decodeURIComponent(uri.slice("file://".length))
+      : uri;
+  } else if (params.rootUri) {
+    const uri = params.rootUri;
+    workspaceRoot = uri.startsWith("file://")
+      ? decodeURIComponent(uri.slice("file://".length))
+      : uri;
+  } else if (params.rootPath) {
+    workspaceRoot = params.rootPath;
+  }
 
   const result: InitializeResult = {
     capabilities: {
@@ -77,6 +98,9 @@ connection.onInitialized(() => {
   }
 
   connection.console.log("Server initialized.");
+  connection.console.log(
+    `[LUNAR] workspace root: ${workspaceRoot ?? process.cwd()}`,
+  );
 
   // ------------------------------------------------------------------
   // Build the full Effect layer graph and boot the pipeline
@@ -95,9 +119,17 @@ connection.onInitialized(() => {
     },
   );
 
-  // ReviewEngine (OpenAI-backed)
-  const ReviewEngineLive: Layer.Layer<ReviewEngine, never, ReviewLogger> =
-    makeOpenAIReviewEngineLayer({ model: "gpt-4o-mini" });
+  // MCPClient — long-lived filesystem MCP server child process
+  const MCPClientLive: Layer.Layer<MCPClient> = makeMCPClientLayer(
+    workspaceRoot,
+  );
+
+  // ReviewEngine (OpenAI-backed, agentic mode with MCP tools)
+  const ReviewEngineLive: Layer.Layer<
+    ReviewEngine,
+    never,
+    ReviewLogger | MCPClient
+  > = makeOpenAIReviewEngineLayer({ model: "gpt-5.2" });
 
   // SettingsManager
   const SettingsManagerLive: Layer.Layer<SettingsManager> =
@@ -118,21 +150,22 @@ connection.onInitialized(() => {
     debounceWaitMs: 1000,
   });
 
-  // Compose all layers into a single self-contained layer that provides
-  // everything the pipeline (and its transitive dependencies) need.
+  // ReviewEngine needs ReviewLogger + MCPClient
+  const ReviewEngineFull: Layer.Layer<ReviewEngine> = ReviewEngineLive.pipe(
+    Layer.provide(Layer.mergeAll(ReviewLoggerLive, MCPClientLive)),
+  );
+
+  // Compose all layers into a single self-contained layer
   const AppLayer: Layer.Layer<
-    DiagnosticsPipeline | SettingsManager | ReviewLogger
+    DiagnosticsPipeline | SettingsManager | ReviewLogger | MCPClient
   > = Layer.mergeAll(
     DiagnosticsPipelineLive,
     SettingsManagerLive,
     ReviewLoggerLive,
+    MCPClientLive,
   ).pipe(
     Layer.provide(
-      Layer.mergeAll(
-        ReviewEngineLive.pipe(Layer.provide(ReviewLoggerLive)),
-        SettingsManagerLive,
-        ReviewLoggerLive,
-      ),
+      Layer.mergeAll(ReviewEngineFull, SettingsManagerLive, ReviewLoggerLive),
     ),
   );
 
@@ -143,12 +176,13 @@ connection.onInitialized(() => {
     // therefore the document-lifecycle event handlers to be registered).
     const pipeline = yield* DiagnosticsPipeline;
     const settings = yield* SettingsManager;
+    const mcp = yield* MCPClient;
 
-    return { pipeline, settings };
+    return { pipeline, settings, mcp };
   }).pipe(Effect.provide(AppLayer));
 
   Effect.runPromise(runtimeEffect).then(
-    ({ pipeline, settings }) => {
+    ({ pipeline, settings, mcp }) => {
       // Configuration changes may affect diagnostics — republish for all
       // open documents.
       connection.onDidChangeConfiguration((change) => {
@@ -164,6 +198,15 @@ connection.onInitialized(() => {
 
       connection.onDidChangeWatchedFiles((_change) => {
         connection.console.log("We received a file change event");
+      });
+
+      // Clean up MCP process on shutdown
+      connection.onShutdown(() => {
+        void mcp.close().catch((err) => {
+          connection.console.error(
+            `[LUNAR] MCP client close failed: ${String(err)}`,
+          );
+        });
       });
     },
     (err) => {

@@ -1,1 +1,1 @@
-{"root":["./src/diagnosticspipeline.ts","./src/server.ts","./src/settings.ts","./src/review/diagnostics.ts","./src/review/openaiengine.ts","./src/review/staticengine.ts","./src/review/types.ts"],"version":"5.9.3"}
+{"root":["./src/diagnosticspipeline.ts","./src/server.ts","./src/settings.ts","./src/review/diagnostics.ts","./src/review/mcpclient.ts","./src/review/openaiengine.ts","./src/review/staticengine.ts","./src/review/types.ts"],"version":"5.9.3"}
