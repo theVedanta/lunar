@@ -117,6 +117,10 @@ export const makeDiagnosticsPipelineLayer = (
       const settings = yield* SettingsManager;
       const logger = yield* ReviewLogger;
 
+      // Tracks the last text successfully passed to the review engine per URI.
+      // Used to compute a diff on subsequent reviews.
+      const lastReviewedText = new Map<string, string>();
+
       // -----------------------------------------------------------------
       // Core: compute diagnostics for a single open document
       // -----------------------------------------------------------------
@@ -142,7 +146,10 @@ export const makeDiagnosticsPipelineLayer = (
           const issues = yield* reviewEngine.reviewDocument({
             uri,
             text: doc.getText(),
+            previousText: lastReviewedText.get(uri),
           });
+
+          lastReviewedText.set(uri, doc.getText());
 
           yield* logger.log(
             `[diagnostics] compute done uri=${uri} version=${version} issues=${issues.length} ms=${Date.now() - startedAt}`,
@@ -285,6 +292,7 @@ export const makeDiagnosticsPipelineLayer = (
       documents.onDidClose((e) => {
         // Let the settings manager know.
         Effect.runSync(settings.onDidCloseDocument(e.document.uri));
+        lastReviewedText.delete(e.document.uri);
 
         const d = debouncers.get(e.document.uri);
         if (d) {

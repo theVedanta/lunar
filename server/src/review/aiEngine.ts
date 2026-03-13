@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { createTwoFilesPatch } from "diff";
 
 import { Context, Effect, Layer, Ref } from "effect";
 import { generateText, NoObjectGeneratedError, Output, stepCountIs } from "ai";
@@ -248,11 +249,54 @@ export const AIReviewEngineLive: Layer.Layer<
           })
           .strict();
 
-        // Build a numbered listing of the file so the model sees explicit line numbers.
-        const numberedSource = params.text
-          .split(/\r\n|\r|\n/)
+        // --- Build file context for the prompt ---
+        // Always include the header (first HEADER_LINES lines) so the model
+        // can see imports and module-level declarations.
+        const HEADER_LINES = 30;
+        const lines = params.text.split(/\r\n|\r|\n/);
+        const headerText = lines
+          .slice(0, HEADER_LINES)
           .map((line, i) => `${String(i + 1).padStart(5)} | ${line}`)
           .join("\n");
+
+        // If we have a previous version, produce a unified diff so the model
+        // focuses on what changed. Otherwise fall back to the full numbered
+        // listing (first review of this document).
+        let fileSection: string;
+        if (
+          params.previousText !== undefined &&
+          params.previousText !== params.text
+        ) {
+          const patch = createTwoFilesPatch(
+            uri,
+            uri,
+            params.previousText,
+            params.text,
+            "previous",
+            "current",
+            { context: 5 },
+          );
+          fileSection =
+            `File header (lines 1–${Math.min(HEADER_LINES, lines.length)}):\n` +
+            "```\n" +
+            `${headerText}\n` +
+            "```\n" +
+            "\n" +
+            "Diff (unified, +added -removed, line numbers are current-file lines):\n" +
+            "```diff\n" +
+            `${patch}\n` +
+            "```\n";
+        } else {
+          // First-time review — send the full numbered listing.
+          const numberedSource = lines
+            .map((line, i) => `${String(i + 1).padStart(5)} | ${line}`)
+            .join("\n");
+          fileSection =
+            "File listing (full, first review):\n" +
+            "```\n" +
+            `${numberedSource}\n` +
+            "```\n";
+        }
 
         const rulesForPrompt = JSON.stringify(rulesFile.rules, null, 2);
         const prompt =
@@ -270,14 +314,12 @@ export const AIReviewEngineLive: Layer.Layer<
           "- Each message must be a single concise sentence (max 120 chars). No multi-line text.\n" +
           "- Prefer severity 1 (Error) or 2 (Warning). Avoid 3/4 unless truly necessary.\n" +
           "- Set span to the exact offending lines only — do not span entire functions unless the whole function is the issue.\n" +
-          "- Line numbers are shown in the leftmost column of the file listing below. Use them exactly.\n" +
+          "- Line numbers refer to the CURRENT file. In the diff, the +/- lines show what changed; use the @@ hunk headers to map to current line numbers.\n" +
           "- severity must be a number: 1=Error, 2=Warning, 3=Information, 4=Hint.\n" +
           "- If there are no serious issues, return an empty list.\n" +
+          "- You may use MCP tools to read related files for additional context if needed.\n" +
           "\n" +
-          "File listing:\n" +
-          "```\n" +
-          `${numberedSource}\n` +
-          "```\n";
+          `${fileSection}`;
 
         // --- Fetch MCP tools ---
         const tools = yield* Effect.tryPromise({

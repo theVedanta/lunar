@@ -83,6 +83,12 @@ export class ReviewRequestError extends Data.TaggedError("ReviewRequestError")<{
 export interface ReviewDocumentParams {
   readonly uri: string;
   readonly text: string;
+  /**
+   * The previous version of the document text, used to compute a diff.
+   * When provided, the engine will send only the diff + file header to the
+   * model instead of the full file contents.
+   */
+  readonly previousText?: string;
   /** Workspace root passed to the MCP filesystem server for file access. */
   readonly workspaceRoot?: string;
 }
