@@ -25,7 +25,7 @@ import {
   makeDiagnosticsPipelineLayer,
 } from "./diagnosticsPipeline";
 import { ReviewLogger, ReviewEngine } from "./review/types";
-import { makeOpenAIReviewEngineLayer } from "./review/openaiEngine";
+import { makeAIReviewEngineLayer } from "./review/aiEngine";
 import { MCPClient, makeMCPClientLayer } from "./review/mcpClient";
 
 // ---------------------------------------------------------------------------
@@ -120,16 +120,15 @@ connection.onInitialized(() => {
   );
 
   // MCPClient — long-lived filesystem MCP server child process
-  const MCPClientLive: Layer.Layer<MCPClient> = makeMCPClientLayer(
-    workspaceRoot,
-  );
+  const MCPClientLive: Layer.Layer<MCPClient> =
+    makeMCPClientLayer(workspaceRoot);
 
   // ReviewEngine (OpenAI-backed, agentic mode with MCP tools)
   const ReviewEngineLive: Layer.Layer<
     ReviewEngine,
     never,
     ReviewLogger | MCPClient
-  > = makeOpenAIReviewEngineLayer({ model: "gpt-5.2" });
+  > = makeAIReviewEngineLayer({ model: "gpt-4.1-mini" });
 
   // SettingsManager
   const SettingsManagerLive: Layer.Layer<SettingsManager> =

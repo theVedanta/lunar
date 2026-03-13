@@ -129,20 +129,20 @@ const loadRulesFile = (
   });
 
 // ---------------------------------------------------------------------------
-// OpenAI review engine options
+// AI review engine options
 // ---------------------------------------------------------------------------
 
-export interface OpenAIReviewEngineOptions {
+export interface AIReviewEngineOptions {
   readonly model?: string;
   readonly maxIssues?: number;
 }
 
 // ---------------------------------------------------------------------------
-// OpenAIConfig service (small config tag)
+// AIConfig service (small config tag)
 // ---------------------------------------------------------------------------
 
-export class OpenAIConfig extends Context.Tag("OpenAIConfig")<
-  OpenAIConfig,
+export class AIConfig extends Context.Tag("AIConfig")<
+  AIConfig,
   {
     readonly model: string;
     readonly maxIssues: number;
@@ -150,26 +150,26 @@ export class OpenAIConfig extends Context.Tag("OpenAIConfig")<
 >() {}
 
 // ---------------------------------------------------------------------------
-// Layer: OpenAIReviewEngineLive
+// Layer: AIReviewEngineLive
 // ---------------------------------------------------------------------------
 
 /**
- * Constructs a `ReviewEngine` layer backed by OpenAI in agentic mode.
+ * Constructs a `ReviewEngine` layer backed by an AI model in agentic mode.
  *
  * The model uses MCP filesystem tools to read files during review, then
  * produces structured ReviewIssues via Output.object().
  *
- * Dependencies: `ReviewLogger`, `OpenAIConfig`, `MCPClient`
+ * Dependencies: `ReviewLogger`, `AIConfig`, `MCPClient`
  */
-export const OpenAIReviewEngineLive: Layer.Layer<
+export const AIReviewEngineLive: Layer.Layer<
   ReviewEngine,
   never,
-  ReviewLogger | OpenAIConfig | MCPClient
+  ReviewLogger | AIConfig | MCPClient
 > = Layer.effect(
   ReviewEngine,
   Effect.gen(function* () {
     const logger = yield* ReviewLogger;
-    const config = yield* OpenAIConfig;
+    const config = yield* AIConfig;
     const mcpClient = yield* MCPClient;
 
     // Mutable state managed via Effect Refs
@@ -204,11 +204,6 @@ export const OpenAIReviewEngineLive: Layer.Layer<
 
         const { uri } = params;
 
-        // Convert file:// URI to filesystem path for the MCP tool
-        const filePath = uri.startsWith("file://")
-          ? decodeURIComponent(uri.slice("file://".length))
-          : uri;
-
         // --- Load rules ---
         const rulesFile = yield* loadRulesFile(logger, rulesCacheRef);
 
@@ -230,8 +225,8 @@ export const OpenAIReviewEngineLive: Layer.Layer<
         const modelIssueSchema = z
           .object({
             ruleId: z.enum(ruleIds),
-            title: z.string().min(1).optional(),
-            message: z.string().min(1),
+            title: z.string().min(1).max(60).optional(),
+            message: z.string().min(1).max(120),
             severity: severitySchema,
             span: z
               .object({
@@ -243,7 +238,7 @@ export const OpenAIReviewEngineLive: Layer.Layer<
                 message: "endLine must be >= startLine",
               }),
             category: z.string().min(1).optional(),
-            tags: z.array(z.string().min(1)).max(10).optional(),
+            tags: z.array(z.string().min(1)).max(3).optional(),
           })
           .strict();
 
@@ -253,27 +248,36 @@ export const OpenAIReviewEngineLive: Layer.Layer<
           })
           .strict();
 
+        // Build a numbered listing of the file so the model sees explicit line numbers.
+        const numberedSource = params.text
+          .split(/\r\n|\r|\n/)
+          .map((line, i) => `${String(i + 1).padStart(5)} | ${line}`)
+          .join("\n");
+
         const rulesForPrompt = JSON.stringify(rulesFile.rules, null, 2);
         const prompt =
-          "You are an AI code reviewer with access to filesystem tools.\n" +
+          "You are a senior code reviewer. Return only the most critical issues.\n" +
           "\n" +
-          "Your task:\n" +
-          `1. Use the read_file tool to read the file at path: ${filePath}\n` +
-          "2. Optionally use list_directory, read_multiple_files, or search_files to read related files for additional context.\n" +
-          "3. Return review issues as structured JSON.\n" +
+          `File URI: ${uri}\n` +
           "\n" +
-          "Constraints:\n" +
-          `- Only use ruleId values from the provided rules list.\n` +
-          "- Use 1-based line numbers (inclusive) for span.startLine and span.endLine.\n" +
-          "- severity must be a number: 1=Error, 2=Warning, 3=Information, 4=Hint.\n" +
-          `- Return at most ${config.maxIssues} issues. If there are no notable review issues, return an empty list.\n` +
-          "- Focus on higher-level code review feedback (clarity, maintainability, safety), not trivial formatting or basic syntax.\n" +
-          "\n" +
-          "Allowed rules (id + name + description):\n" +
+          "Rules (use only these ruleId values):\n" +
           `${rulesForPrompt}\n` +
           "\n" +
-          "File URI:\n" +
-          `${uri}\n`;
+          "Output rules — follow these strictly:\n" +
+          `- Return at most ${config.maxIssues} issues. Fewer is better. Only flag serious problems.\n` +
+          "- Skip style nits, minor naming suggestions, and anything a linter would catch.\n" +
+          "- Only flag bugs, logic errors, security vulnerabilities, or significant maintainability problems.\n" +
+          "- Each message must be a single concise sentence (max 120 chars). No multi-line text.\n" +
+          "- Prefer severity 1 (Error) or 2 (Warning). Avoid 3/4 unless truly necessary.\n" +
+          "- Set span to the exact offending lines only — do not span entire functions unless the whole function is the issue.\n" +
+          "- Line numbers are shown in the leftmost column of the file listing below. Use them exactly.\n" +
+          "- severity must be a number: 1=Error, 2=Warning, 3=Information, 4=Hint.\n" +
+          "- If there are no serious issues, return an empty list.\n" +
+          "\n" +
+          "File listing:\n" +
+          "```\n" +
+          `${numberedSource}\n` +
+          "```\n";
 
         // --- Fetch MCP tools ---
         const tools = yield* Effect.tryPromise({
@@ -281,15 +285,14 @@ export const OpenAIReviewEngineLive: Layer.Layer<
           catch: (err) => new ReviewRequestError({ uri, cause: err }),
         });
 
-        // --- Call OpenAI in agentic mode ---
+        // --- Call AI model in agentic mode ---
         const startedAt = Date.now();
         yield* logger.log(
           `request start uri=${uri} model=${config.model} (agentic mode)`,
         );
 
         // Capture logger for use inside sync callbacks
-        const syncLog = (msg: string) =>
-          Effect.runSync(logger.log(msg));
+        const syncLog = (msg: string) => Effect.runSync(logger.log(msg));
 
         const res = yield* Effect.tryPromise({
           try: () =>
@@ -300,12 +303,12 @@ export const OpenAIReviewEngineLive: Layer.Layer<
                 schema: outputSchema,
                 name: "ReviewIssues",
                 description:
-                  "A list of code review issues for an editor diagnostics UI.",
+                  "A list of serious code review issues for an editor diagnostics UI.",
               }),
-              // 4 tool call steps + 1 structured output step
-              stopWhen: stepCountIs(5),
+              // 1 optional tool call step (related files) + 1 structured output step
+              stopWhen: stepCountIs(2),
               system:
-                "Return only valid JSON that matches the schema. Do not include markdown.",
+                "Return only valid JSON matching the schema. No markdown. Be terse.",
               prompt,
 
               experimental_onStepStart: ({ stepNumber, tools: stepTools }) => {
@@ -341,10 +344,17 @@ export const OpenAIReviewEngineLive: Layer.Layer<
                 }
               },
 
-              onStepFinish: ({ stepNumber, usage, finishReason, toolCalls, toolResults }) => {
-                const callSummary = toolCalls.length > 0
-                  ? toolCalls.map((tc) => tc.toolName).join(", ")
-                  : "none";
+              onStepFinish: ({
+                stepNumber,
+                usage,
+                finishReason,
+                toolCalls,
+                toolResults,
+              }) => {
+                const callSummary =
+                  toolCalls.length > 0
+                    ? toolCalls.map((tc) => tc.toolName).join(", ")
+                    : "none";
                 syncLog(
                   `[step ${stepNumber}] finish reason=${finishReason} tool_calls=[${callSummary}] tool_results=${toolResults.length} tokens_in=${usage.inputTokens} tokens_out=${usage.outputTokens}`,
                 );
@@ -352,7 +362,6 @@ export const OpenAIReviewEngineLive: Layer.Layer<
             }),
           catch: (error) => {
             if (NoObjectGeneratedError.isInstance(error)) {
-              // Log extra diagnostics but still surface as ReviewRequestError
               Effect.runSync(logger.log("NoObjectGeneratedError"));
               Effect.runSync(logger.log(`Cause: ${error.cause}`));
               Effect.runSync(logger.log(`Text: ${error.text}`));
@@ -371,10 +380,7 @@ export const OpenAIReviewEngineLive: Layer.Layer<
         );
 
         // --- Determine line count from params.text for clamping ---
-        const lineCount = Math.max(
-          1,
-          params.text.split(/\r\n|\r|\n/).length,
-        );
+        const lineCount = Math.max(1, params.text.split(/\r\n|\r|\n/).length);
 
         // --- Map to ReviewIssue instances ---
         const out: ReviewIssue[] = [];
@@ -414,15 +420,15 @@ export const OpenAIReviewEngineLive: Layer.Layer<
  * `ReviewLogger` and `MCPClient` in its environment.
  *
  * This is the main entry point for callers that just want a working
- * OpenAI-backed engine without manually wiring up `OpenAIConfig`.
+ * AI-backed engine without manually wiring up `AIConfig`.
  */
-export const makeOpenAIReviewEngineLayer = (
-  options?: OpenAIReviewEngineOptions,
+export const makeAIReviewEngineLayer = (
+  options?: AIReviewEngineOptions,
 ): Layer.Layer<ReviewEngine, never, ReviewLogger | MCPClient> => {
-  const configLayer = Layer.succeed(OpenAIConfig, {
-    model: options?.model ?? "gpt-5.2",
-    maxIssues: options?.maxIssues ?? 20,
+  const configLayer = Layer.succeed(AIConfig, {
+    model: options?.model ?? "gpt-4.1-mini",
+    maxIssues: options?.maxIssues ?? 5,
   });
 
-  return OpenAIReviewEngineLive.pipe(Layer.provide(configLayer));
+  return AIReviewEngineLive.pipe(Layer.provide(configLayer));
 };
