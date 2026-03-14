@@ -136,6 +136,7 @@ const loadRulesFile = (
 export interface AIReviewEngineOptions {
   readonly model?: string;
   readonly maxIssues?: number;
+  readonly apiKey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +148,7 @@ export class AIConfig extends Context.Tag("AIConfig")<
   {
     readonly model: string;
     readonly maxIssues: number;
+    readonly apiKey: string | undefined;
   }
 >() {}
 
@@ -189,13 +191,14 @@ export const AIReviewEngineLive: Layer.Layer<
     > =>
       Effect.gen(function* () {
         // --- API key check ---
-        const apiKey = process.env.OPENAI_API_KEY;
+        // Priority: initializationOptions (via AIConfig) → OPENAI_API_KEY env var
+        const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
         if (!apiKey) {
           const alreadyWarned = yield* Ref.get(warnedMissingKeyRef);
           if (!alreadyWarned) {
             yield* Ref.set(warnedMissingKeyRef, true);
             yield* logger.warn(
-              "OPENAI_API_KEY is not set; returning no issues",
+              "No API key found; set openAIApiKey in initializationOptions or the OPENAI_API_KEY env var",
             );
           }
           return yield* new MissingApiKeyError({ key: "OPENAI_API_KEY" });
@@ -470,6 +473,7 @@ export const makeAIReviewEngineLayer = (
   const configLayer = Layer.succeed(AIConfig, {
     model: options?.model ?? "gpt-4.1-mini",
     maxIssues: options?.maxIssues ?? 5,
+    apiKey: options?.apiKey,
   });
 
   return AIReviewEngineLive.pipe(Layer.provide(configLayer));

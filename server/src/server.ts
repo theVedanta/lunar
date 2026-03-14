@@ -41,7 +41,12 @@ let hasWorkspaceFolderCapability = false;
 // Workspace root resolved from InitializeParams; used to scope MCP filesystem access.
 let workspaceRoot: string | undefined;
 
+// initializationOptions passed by the LSP client (Neovim, opencode, VS Code, etc.)
+let initOptions: Record<string, unknown> = {};
+
 connection.onInitialize((params: InitializeParams) => {
+  initOptions = (params.initializationOptions as Record<string, unknown>) ?? {};
+
   const capabilities = params.capabilities;
 
   hasConfigurationCapability = !!(
@@ -124,11 +129,23 @@ connection.onInitialized(() => {
     makeMCPClientLayer(workspaceRoot);
 
   // ReviewEngine (OpenAI-backed, agentic mode with MCP tools)
+  // Config priority: initializationOptions → env var fallback (handled inside aiEngine)
   const ReviewEngineLive: Layer.Layer<
     ReviewEngine,
     never,
     ReviewLogger | MCPClient
-  > = makeAIReviewEngineLayer({ model: "gpt-4.1-mini" });
+  > = makeAIReviewEngineLayer({
+    apiKey:
+      typeof initOptions.openAIApiKey === "string"
+        ? initOptions.openAIApiKey
+        : undefined,
+    model:
+      typeof initOptions.model === "string"
+        ? initOptions.model
+        : "gpt-4.1-mini",
+    maxIssues:
+      typeof initOptions.maxIssues === "number" ? initOptions.maxIssues : 5,
+  });
 
   // SettingsManager
   const SettingsManagerLive: Layer.Layer<SettingsManager> =
