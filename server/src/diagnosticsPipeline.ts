@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import type { Connection, Diagnostic } from "vscode-languageserver/node";
+import { DiagnosticSeverity } from "vscode-languageserver/node";
 import type { TextDocuments } from "vscode-languageserver/node";
 import type { TextDocument } from "vscode-languageserver-textdocument";
 
@@ -14,6 +15,24 @@ import {
 } from "./review/types";
 import { reviewIssuesToDiagnostics } from "./review/diagnostics";
 import { SettingsManager, type ServerSettings } from "./settings";
+
+// ---------------------------------------------------------------------------
+// Sentinel diagnostic — published while AI review is in progress so that any
+// LSP client (including AI coding agents) sees a non-empty diagnostics list
+// and knows the file has not yet been fully analysed.  Once the real review
+// finishes the sentinel is atomically replaced with actual issues (or cleared).
+// ---------------------------------------------------------------------------
+
+const SENTINEL_DIAGNOSTIC: Diagnostic = {
+  range: {
+    start: { line: 0, character: 0 },
+    end: { line: 0, character: 1 },
+  },
+  severity: DiagnosticSeverity.Information,
+  source: "lunar",
+  code: "lunar/analyzing",
+  message: "AI Code Review: analyzing…",
+};
 
 // ---------------------------------------------------------------------------
 // DiagnosticsPipeline service interface
@@ -186,6 +205,13 @@ export const makeDiagnosticsPipelineLayer = (
             return;
           }
 
+          // Publish the sentinel immediately so any LSP client polling
+          // diagnostics sees a non-clean state while the AI review runs.
+          connection.sendDiagnostics({
+            uri,
+            diagnostics: [SENTINEL_DIAGNOSTIC],
+          });
+
           // Run the review engine. If it fails (missing API key, rules load
           // error, request error) we log and swallow — the user simply sees
           // no diagnostics rather than a crash.
@@ -203,9 +229,11 @@ export const makeDiagnosticsPipelineLayer = (
           );
 
           // Avoid publishing stale results if the document changed while we
-          // were computing.
+          // were computing.  Also clear the sentinel — if the version is now
+          // stale a fresh run will emit its own sentinel shortly.
           const latest = documents.get(uri);
           if (!latest || latest.version !== version) {
+            connection.sendDiagnostics({ uri, diagnostics: [] });
             return;
           }
 
@@ -238,15 +266,21 @@ export const makeDiagnosticsPipelineLayer = (
           return existing;
         }
 
+        const clearSentinel = () =>
+          connection.sendDiagnostics({ uri, diagnostics: [] });
+
         const d = new AsyncDebouncer<PublishFn>(
           async (version: number) => {
             // Bridge back into Effect runtime for the actual work
             await Effect.runPromise(
               publishForUriAtVersion(uri, version).pipe(
                 Effect.catchAllDefect((defect) =>
-                  logger.error(
-                    `[diagnostics] unexpected defect for ${uri}: ${String(defect)}`,
-                  ),
+                  Effect.gen(function* () {
+                    yield* logger.error(
+                      `[diagnostics] unexpected defect for ${uri}: ${String(defect)}`,
+                    );
+                    clearSentinel();
+                  }),
                 ),
               ),
             );
@@ -258,6 +292,7 @@ export const makeDiagnosticsPipelineLayer = (
               connection.console.error(
                 `[diagnostics] debounced publish failed for ${uri}: ${String(error)}`,
               );
+              clearSentinel();
             },
           },
         );

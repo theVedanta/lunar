@@ -157,12 +157,17 @@ export const makeSettingsManagerLayer = (
             return yield* Effect.promise(() => existing);
           }
 
-          const fetched = connection.workspace.getConfiguration({
-            scopeUri: resourceUri,
-            section,
-          }) as Promise<ServerSettings>;
+          // Non-VSCode clients (Neovim, Zed, etc.) return null for unknown
+          // configuration sections — normalise to defaults so the server works
+          // everywhere, not just in VSCode.
+          const fetched = (
+            connection.workspace.getConfiguration({
+              scopeUri: resourceUri,
+              section,
+            }) as Promise<ServerSettings | null | undefined>
+          ).then((s) => s ?? defaults);
 
-          // Store the promise in the cache
+          // Store the normalised promise in the cache
           const newCache = new Map(cache);
           newCache.set(resourceUri, fetched);
           yield* Ref.set(documentSettingsRef, newCache);
