@@ -25,7 +25,7 @@ export function activate(context: ExtensionContext) {
   };
 
   function getInitOptions(): Record<string, unknown> {
-    const config = workspace.getConfiguration("lunar");
+    const config = workspace.getConfiguration("lunar-lsp");
     return {
       openAIApiKey: config.get<string>("openAIApiKey", ""),
       model: config.get<string>("model", "gpt-4.1-mini"),

@@ -1,6 +1,6 @@
 {
-  "name": "lunar",
-  "displayName": "Lunar",
+  "name": "lunar-lsp",
+  "displayName": "Lunar LSP",
   "description": "AI-powered code review surfaced as LSP diagnostics — inline, in your editor, as you write.",
   "author": "Vedanta Somnathe",
   "license": "MIT",
@@ -9,7 +9,7 @@
     "type": "git",
     "url": "https://github.com/theVedanta/lunar"
   },
-  "publisher": "VedantaSomnathe",
+  "publisher": "thvdnta",
   "categories": [
     "Linters",
     "Other"
