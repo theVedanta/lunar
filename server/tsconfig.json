@@ -1,25 +1,16 @@
 {
-	"compilerOptions": {
-		"target": "ES2024",
-		"lib": [
-			"ES2024",
-			"DOM",
-			"DOM.Iterable"
-		],
-		"module": "Node16",
-		"moduleResolution": "node16",
-		"esModuleInterop": true,
-		"allowSyntheticDefaultImports": true,
-		"sourceMap": true,
-		"strict": true,
-		"outDir": "out",
-		"rootDir": "src"
-	},
-	"include": [
-		"src"
-	],
-	"exclude": [
-		"node_modules",
-		".vscode-test"
-	]
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": false,
+    "strict": true,
+    "outDir": "out",
+    "rootDir": "src",
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", ".vscode-test"],
 }

@@ -152,7 +152,7 @@ connection.onInitialized(() => {
     makeSettingsManagerLayer({
       connection,
       hasConfigurationCapability,
-      section: "languageServerExample",
+      section: "lunar-lsp",
     });
 
   // DiagnosticsPipeline

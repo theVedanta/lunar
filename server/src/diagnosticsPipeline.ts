@@ -28,8 +28,8 @@ const SENTINEL_DIAGNOSTIC: Diagnostic = {
     end: { line: 0, character: 1 },
   },
   severity: DiagnosticSeverity.Information,
-  source: "lunar",
-  code: "lunar/analyzing",
+  source: "lunar-lsp",
+  code: "lunar-lsp/analyzing",
   message: "AI Code Review: analyzing…",
 };
 

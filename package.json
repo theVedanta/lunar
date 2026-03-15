@@ -31,15 +31,15 @@
   "contributes": {
     "configuration": {
       "type": "object",
-      "title": "Lunar",
+      "title": "Lunar LSP",
       "properties": {
-        "lunar.openAIApiKey": {
+        "lunar-lsp.openAIApiKey": {
           "scope": "machine",
           "type": "string",
           "default": "",
           "markdownDescription": "Your OpenAI API key. Get one at https://platform.openai.com/api-keys. Stored machine-scoped so it is not synced across machines."
         },
-        "lunar.model": {
+        "lunar-lsp.model": {
           "scope": "resource",
           "type": "string",
           "default": "gpt-4.1-mini",
@@ -51,19 +51,19 @@
           ],
           "description": "The OpenAI model used for code review."
         },
-        "lunar.maxIssues": {
+        "lunar-lsp.maxIssues": {
           "scope": "resource",
           "type": "number",
           "default": 5,
           "description": "Maximum number of issues to surface per file per review pass."
         },
-        "lunar.maxNumberOfProblems": {
+        "lunar-lsp.maxNumberOfProblems": {
           "scope": "resource",
           "type": "number",
           "default": 100,
           "description": "Hard cap on the total number of diagnostics shown per file."
         },
-        "lunar.trace.server": {
+        "lunar-lsp.trace.server": {
           "scope": "window",
           "type": "string",
           "enum": [
@@ -78,13 +78,20 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -b",
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "node ./scripts/build.mjs --production",
     "watch": "tsc -b -w",
     "lint": "eslint",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish --no-dependencies",
     "postinstall": "cd client && pnpm install && cd ../server && pnpm install && cd .."
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@vscode/vsce-sign",
+      "keytar"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
@@ -92,6 +99,7 @@
     "@types/mocha": "^10.0.6",
     "@types/node": "^22",
     "@vscode/vsce": "^3.4.2",
+    "esbuild": "^0.27.4",
     "eslint": "^9.13.0",
     "mocha": "^10.3.0",
     "typescript": "^5.9.2",

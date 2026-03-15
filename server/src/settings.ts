@@ -95,7 +95,7 @@ export const makeSettingsManagerLayer = (
   const {
     connection,
     hasConfigurationCapability,
-    section = "languageServerExample",
+    section = "lunar-lsp",
     defaults = defaultSettings,
   } = config;
 

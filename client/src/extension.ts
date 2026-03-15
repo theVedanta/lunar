@@ -38,14 +38,14 @@ export function activate(context: ExtensionContext) {
   if (!initOptions.openAIApiKey) {
     void window
       .showWarningMessage(
-        "Lunar: No OpenAI API key configured. Add your key under Settings → Lunar › Open AI Api Key.",
+        "Lunar LSP: No OpenAI API key configured. Add your key under Settings → Lunar LSP › Open AI Api Key.",
         "Open Settings",
       )
       .then((choice) => {
         if (choice === "Open Settings") {
           void commands.executeCommand(
             "workbench.action.openSettings",
-            "lunar.openAIApiKey",
+            "lunar-lsp.openAIApiKey",
           );
         }
       });
@@ -59,7 +59,12 @@ export function activate(context: ExtensionContext) {
     initializationOptions: initOptions,
   };
 
-  client = new LanguageClient("lunar", "Lunar", serverOptions, clientOptions);
+  client = new LanguageClient(
+    "lunar-lsp",
+    "Lunar LSP",
+    serverOptions,
+    clientOptions,
+  );
   client.start();
 
   // When the API key, model, or maxIssues changes, restart the server so the
@@ -67,9 +72,9 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     workspace.onDidChangeConfiguration(async (e) => {
       if (
-        e.affectsConfiguration("lunar.openAIApiKey") ||
-        e.affectsConfiguration("lunar.model") ||
-        e.affectsConfiguration("lunar.maxIssues")
+        e.affectsConfiguration("lunar-lsp.openAIApiKey") ||
+        e.affectsConfiguration("lunar-lsp.model") ||
+        e.affectsConfiguration("lunar-lsp.maxIssues")
       ) {
         await client.stop();
         const fresh = getInitOptions();

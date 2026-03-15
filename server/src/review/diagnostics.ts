@@ -62,7 +62,7 @@ export function reviewIssueToDiagnostic(
       issue.span.endLine,
     ),
     message: issue.message,
-    source: "lunar",
+    source: "lunar-lsp",
     code: issue.ruleId,
   };
 }

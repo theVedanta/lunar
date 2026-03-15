@@ -114,8 +114,8 @@ This makes Lunar useful as a feedback loop for agentic coding workflows: write c
 
 | Setting | Default | Description |
 |---|---|---|
-| `languageServerExample.maxNumberOfProblems` | `100` | Max diagnostics shown per file |
-| `languageServerExample.trace.server` | `"off"` | LSP message tracing for debugging |
+| `lunar-lsp.maxNumberOfProblems` | `100` | Max diagnostics shown per file |
+| `lunar-lsp.trace.server` | `"off"` | LSP message tracing for debugging |
 
 ---
 
