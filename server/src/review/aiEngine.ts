@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { createTwoFilesPatch } from "diff";
 
 import { Context, Effect, Layer, Ref } from "effect";
@@ -13,29 +11,16 @@ import {
   ReviewIssue,
   ReviewLogger,
   MissingApiKeyError,
-  RulesLoadError,
   ReviewRequestError,
   type ReviewDocumentParams,
 } from "./types";
 import { MCPClient } from "./mcpClient";
-
-// ---------------------------------------------------------------------------
-// Rules file types & helpers
-// ---------------------------------------------------------------------------
-
-interface RulesFile {
-  version: number;
-  rules: { id: string; name: string; description?: string }[];
-}
+import { RULES } from "./rules";
 
 function clampLine1Based(line: number, lineCount: number): number {
   const lc = Math.max(1, lineCount);
   return Math.min(Math.max(1, line), lc);
 }
-
-// ---------------------------------------------------------------------------
-// Zod schemas (reused across calls)
-// ---------------------------------------------------------------------------
 
 const severitySchema = z.union([
   z.literal(DiagnosticSeverity.Error),
@@ -44,104 +29,11 @@ const severitySchema = z.union([
   z.literal(DiagnosticSeverity.Hint),
 ]);
 
-const rulesSchema = z
-  .object({
-    version: z.number().int().positive(),
-    rules: z
-      .array(
-        z.object({
-          id: z.string().min(1),
-          name: z.string().min(1),
-          description: z.string().min(1).optional(),
-        }),
-      )
-      .min(1),
-  })
-  .strict();
-
-// ---------------------------------------------------------------------------
-// Internal cached-rules state
-// ---------------------------------------------------------------------------
-
-interface RulesCache {
-  readonly value: RulesFile;
-  readonly loadedAtMs: number;
-  readonly source: string;
-}
-
-// ---------------------------------------------------------------------------
-// loadRulesFile as an Effect
-// ---------------------------------------------------------------------------
-
-const loadRulesFile = (
-  logger: Context.Tag.Service<typeof ReviewLogger>,
-  cacheRef: Ref.Ref<RulesCache | null>,
-): Effect.Effect<RulesFile, RulesLoadError> =>
-  Effect.gen(function* () {
-    const now = Date.now();
-    const cached = yield* Ref.get(cacheRef);
-
-    // Return cached value if fresh (< 2 seconds old)
-    if (cached !== null && now - cached.loadedAtMs < 2000) {
-      return cached.value;
-    }
-
-    const candidates = [
-      path.join(__dirname, "rules.json"),
-      path.resolve(__dirname, "../../src/review/rules.json"),
-      path.resolve(process.cwd(), "server/src/review/rules.json"),
-    ];
-
-    // Try each candidate path
-    for (const p of candidates) {
-      const attempt = yield* Effect.tryPromise({
-        try: async () => {
-          const raw = await readFile(p, "utf8");
-          return rulesSchema.parse(JSON.parse(raw) as unknown);
-        },
-        catch: (err) =>
-          new RulesLoadError({
-            message: `Failed to load ${p}: ${String(err)}`,
-          }),
-      }).pipe(
-        // Swallow the error — convert to null so we can try the next candidate
-        Effect.catchAll(() => Effect.succeed(null as RulesFile | null)),
-      );
-
-      if (attempt !== null) {
-        const newCache: RulesCache = {
-          value: attempt,
-          loadedAtMs: now,
-          source: p,
-        };
-        yield* Ref.set(cacheRef, newCache);
-        return attempt;
-      }
-    }
-
-    yield* logger.error(
-      `failed to load rules.json from any candidate path: ${candidates.join(", ")}`,
-    );
-    yield* Ref.set(cacheRef, null);
-    return yield* new RulesLoadError({
-      message: "No rules.json found",
-      candidates,
-    });
-  });
-
-// ---------------------------------------------------------------------------
-// AI review engine options
-// ---------------------------------------------------------------------------
-
 export interface AIReviewEngineOptions {
   readonly model?: string;
   readonly maxIssues?: number;
   readonly apiKey?: string;
 }
-
-// ---------------------------------------------------------------------------
-// AIConfig service (small config tag)
-// ---------------------------------------------------------------------------
 
 export class AIConfig extends Context.Tag("AIConfig")<
   AIConfig,
@@ -152,18 +44,6 @@ export class AIConfig extends Context.Tag("AIConfig")<
   }
 >() {}
 
-// ---------------------------------------------------------------------------
-// Layer: AIReviewEngineLive
-// ---------------------------------------------------------------------------
-
-/**
- * Constructs a `ReviewEngine` layer backed by an AI model in agentic mode.
- *
- * The model uses MCP filesystem tools to read files during review, then
- * produces structured ReviewIssues via Output.object().
- *
- * Dependencies: `ReviewLogger`, `AIConfig`, `MCPClient`
- */
 export const AIReviewEngineLive: Layer.Layer<
   ReviewEngine,
   never,
@@ -175,23 +55,17 @@ export const AIReviewEngineLive: Layer.Layer<
     const config = yield* AIConfig;
     const mcpClient = yield* MCPClient;
 
-    // Mutable state managed via Effect Refs
-    const rulesCacheRef = yield* Ref.make<RulesCache | null>(null);
     const warnedMissingKeyRef = yield* Ref.make(false);
-    const loggedRulesSourceRef = yield* Ref.make<string | undefined>(undefined);
 
-    // Lazily created OpenAI provider (kept in a closure)
     let openAIProvider: ReturnType<typeof createOpenAI> | undefined;
 
     const reviewDocument = (
       params: ReviewDocumentParams,
     ): Effect.Effect<
       readonly ReviewIssue[],
-      MissingApiKeyError | RulesLoadError | ReviewRequestError
+      MissingApiKeyError | ReviewRequestError
     > =>
       Effect.gen(function* () {
-        // --- API key check ---
-        // Priority: initializationOptions (via AIConfig) → OPENAI_API_KEY env var
         const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
         if (!apiKey) {
           const alreadyWarned = yield* Ref.get(warnedMissingKeyRef);
@@ -207,23 +81,8 @@ export const AIReviewEngineLive: Layer.Layer<
         openAIProvider ??= createOpenAI({ apiKey });
 
         const { uri } = params;
-
-        // --- Load rules ---
-        const rulesFile = yield* loadRulesFile(logger, rulesCacheRef);
-
-        // Log the rules source once (or when it changes)
-        const cachedNow = yield* Ref.get(rulesCacheRef);
-        const prevSource = yield* Ref.get(loggedRulesSourceRef);
-        if (cachedNow && cachedNow.source !== prevSource) {
-          yield* Ref.set(loggedRulesSourceRef, cachedNow.source);
-          yield* logger.log(
-            `rules source=${cachedNow.source} rules=${rulesFile.rules.length}`,
-          );
-        }
-
-        // --- Build schemas & prompt ---
         const ruleIds = Array.from(
-          new Set(rulesFile.rules.map((r) => r.id).filter(Boolean)),
+          new Set(RULES.rules.map((r) => r.id).filter(Boolean)),
         ) as [string, ...string[]];
 
         const modelIssueSchema = z
@@ -252,9 +111,6 @@ export const AIReviewEngineLive: Layer.Layer<
           })
           .strict();
 
-        // --- Build file context for the prompt ---
-        // Always include the header (first HEADER_LINES lines) so the model
-        // can see imports and module-level declarations.
         const HEADER_LINES = 30;
         const lines = params.text.split(/\r\n|\r|\n/);
         const headerText = lines
@@ -262,9 +118,6 @@ export const AIReviewEngineLive: Layer.Layer<
           .map((line, i) => `${String(i + 1).padStart(5)} | ${line}`)
           .join("\n");
 
-        // If we have a previous version, produce a unified diff so the model
-        // focuses on what changed. Otherwise fall back to the full numbered
-        // listing (first review of this document).
         let fileSection: string;
         if (
           params.previousText !== undefined &&
@@ -290,7 +143,6 @@ export const AIReviewEngineLive: Layer.Layer<
             `${patch}\n` +
             "```\n";
         } else {
-          // First-time review — send the full numbered listing.
           const numberedSource = lines
             .map((line, i) => `${String(i + 1).padStart(5)} | ${line}`)
             .join("\n");
@@ -301,7 +153,7 @@ export const AIReviewEngineLive: Layer.Layer<
             "```\n";
         }
 
-        const rulesForPrompt = JSON.stringify(rulesFile.rules, null, 2);
+        const rulesForPrompt = JSON.stringify(RULES.rules, null, 2);
         const prompt =
           "You are a senior code reviewer. Return only the most critical issues.\n" +
           "\n" +
@@ -324,19 +176,16 @@ export const AIReviewEngineLive: Layer.Layer<
           "\n" +
           `${fileSection}`;
 
-        // --- Fetch MCP tools ---
         const tools = yield* Effect.tryPromise({
           try: () => mcpClient.tools(),
           catch: (err) => new ReviewRequestError({ uri, cause: err }),
         });
 
-        // --- Call AI model in agentic mode ---
         const startedAt = Date.now();
         yield* logger.log(
           `request start uri=${uri} model=${config.model} (agentic mode)`,
         );
 
-        // Capture logger for use inside sync callbacks
         const syncLog = (msg: string) => Effect.runSync(logger.log(msg));
 
         const res = yield* Effect.tryPromise({
@@ -350,7 +199,6 @@ export const AIReviewEngineLive: Layer.Layer<
                 description:
                   "A list of serious code review issues for an editor diagnostics UI.",
               }),
-              // 1 optional tool call step (related files) + 1 structured output step
               stopWhen: stepCountIs(2),
               system:
                 "Return only valid JSON matching the schema. No markdown. Be terse.",
@@ -424,10 +272,8 @@ export const AIReviewEngineLive: Layer.Layer<
           `request done uri=${uri} issues=${issues.length} ms=${Date.now() - startedAt}`,
         );
 
-        // --- Determine line count from params.text for clamping ---
         const lineCount = Math.max(1, params.text.split(/\r\n|\r|\n/).length);
 
-        // --- Map to ReviewIssue instances ---
         const out: ReviewIssue[] = [];
         for (const issue of issues) {
           const startLine = clampLine1Based(issue.span.startLine, lineCount);
@@ -456,17 +302,6 @@ export const AIReviewEngineLive: Layer.Layer<
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Convenience: build a fully-provided Layer from options
-// ---------------------------------------------------------------------------
-
-/**
- * Creates a self-contained `ReviewEngine` layer that requires only
- * `ReviewLogger` and `MCPClient` in its environment.
- *
- * This is the main entry point for callers that just want a working
- * AI-backed engine without manually wiring up `AIConfig`.
- */
 export const makeAIReviewEngineLayer = (
   options?: AIReviewEngineOptions,
 ): Layer.Layer<ReviewEngine, never, ReviewLogger | MCPClient> => {

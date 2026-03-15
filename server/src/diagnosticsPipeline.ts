@@ -10,7 +10,6 @@ import {
   ReviewEngine,
   ReviewLogger,
   type MissingApiKeyError,
-  type RulesLoadError,
   type ReviewRequestError,
 } from "./review/types";
 import { reviewIssuesToDiagnostics } from "./review/diagnostics";
@@ -146,10 +145,7 @@ export const makeDiagnosticsPipelineLayer = (
 
       const computeDiagnosticsForOpenDocument = (
         doc: TextDocument,
-      ): Effect.Effect<
-        Diagnostic[],
-        MissingApiKeyError | RulesLoadError | ReviewRequestError
-      > =>
+      ): Effect.Effect<Diagnostic[], MissingApiKeyError | ReviewRequestError> =>
         Effect.gen(function* () {
           const uri = doc.uri;
           const version = doc.version;

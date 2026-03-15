@@ -1,66 +1,100 @@
 {
-	"name": "lsp-sample",
-	"description": "A code-review engine for your IDE, surfacing review as LSP diagnostics",
-	"author": "Microsoft Corporation",
-	"license": "MIT",
-	"version": "1.0.0",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-extension-samples"
-	},
-	"publisher": "vscode-samples",
-	"categories": [],
-	"keywords": [
-		"multi-root ready"
-	],
-	"engines": {
-		"vscode": "^1.100.0"
-	},
-	"activationEvents": [
-		"onStartupFinished"
-	],
-	"main": "./client/out/extension",
-	"contributes": {
-		"configuration": {
-			"type": "object",
-			"title": "Example configuration",
-			"properties": {
-				"languageServerExample.maxNumberOfProblems": {
-					"scope": "resource",
-					"type": "number",
-					"default": 100,
-					"description": "Controls the maximum number of problems produced by the server."
-				},
-				"languageServerExample.trace.server": {
-					"scope": "window",
-					"type": "string",
-					"enum": [
-						"off",
-						"messages",
-						"verbose"
-					],
-					"default": "off",
-					"description": "Traces the communication between VS Code and the language server."
-				}
-			}
-		}
-	},
-	"scripts": {
-		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -b",
-		"watch": "tsc -b -w",
-		"lint": "eslint",
-		"postinstall": "cd client && pnpm install && cd ../server && pnpm install && cd ..",
-		"test": "sh ./scripts/e2e.sh"
-	},
-	"devDependencies": {
-		"@eslint/js": "^9.13.0",
-		"@stylistic/eslint-plugin": "^2.9.0",
-		"@types/mocha": "^10.0.6",
-		"@types/node": "^22",
-		"eslint": "^9.13.0",
-		"mocha": "^10.3.0",
-		"typescript": "^5.9.2",
-		"typescript-eslint": "^8.39.0"
-	}
+  "name": "lunar",
+  "displayName": "Lunar",
+  "description": "AI-powered code review surfaced as LSP diagnostics — inline, in your editor, as you write.",
+  "author": "Vedanta Somnathe",
+  "license": "MIT",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/theVedanta/lunar"
+  },
+  "publisher": "VedantaSomnathe",
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "code review",
+    "lsp",
+    "diagnostics",
+    "openai"
+  ],
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./client/out/extension",
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Lunar",
+      "properties": {
+        "lunar.openAIApiKey": {
+          "scope": "machine",
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Your OpenAI API key. Get one at https://platform.openai.com/api-keys. Stored machine-scoped so it is not synced across machines."
+        },
+        "lunar.model": {
+          "scope": "resource",
+          "type": "string",
+          "default": "gpt-4.1-mini",
+          "enum": [
+            "gpt-4.1-mini",
+            "gpt-4.1",
+            "gpt-4o",
+            "gpt-4o-mini"
+          ],
+          "description": "The OpenAI model used for code review."
+        },
+        "lunar.maxIssues": {
+          "scope": "resource",
+          "type": "number",
+          "default": 5,
+          "description": "Maximum number of issues to surface per file per review pass."
+        },
+        "lunar.maxNumberOfProblems": {
+          "scope": "resource",
+          "type": "number",
+          "default": 100,
+          "description": "Hard cap on the total number of diagnostics shown per file."
+        },
+        "lunar.trace.server": {
+          "scope": "window",
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the Lunar language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w",
+    "lint": "eslint",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies",
+    "postinstall": "cd client && pnpm install && cd ../server && pnpm install && cd .."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@stylistic/eslint-plugin": "^2.9.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^22",
+    "@vscode/vsce": "^3.4.2",
+    "eslint": "^9.13.0",
+    "mocha": "^10.3.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.0"
+  }
 }

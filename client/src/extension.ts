@@ -1,10 +1,5 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
-
 import * as path from "path";
-import { workspace, ExtensionContext } from "vscode";
+import { workspace, ExtensionContext, window, commands } from "vscode";
 
 import {
   LanguageClient,
@@ -16,41 +11,73 @@ import {
 let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
-  // The server is implemented in node
   const serverModule = context.asAbsolutePath(
     path.join("server", "out", "server.js"),
   );
 
-  // If the extension is launched in debug mode then the debug server options are used
-  // Otherwise the run options are used
   const serverOptions: ServerOptions = {
     run: { module: serverModule, transport: TransportKind.ipc },
     debug: {
       module: serverModule,
       transport: TransportKind.ipc,
+      options: { execArgv: ["--nolazy", "--inspect=6009"] },
     },
   };
 
-  // Options to control the language client
+  function getInitOptions(): Record<string, unknown> {
+    const config = workspace.getConfiguration("lunar");
+    return {
+      openAIApiKey: config.get<string>("openAIApiKey", ""),
+      model: config.get<string>("model", "gpt-4.1-mini"),
+      maxIssues: config.get<number>("maxIssues", 5),
+    };
+  }
+
+  const initOptions = getInitOptions();
+
+  if (!initOptions.openAIApiKey) {
+    void window
+      .showWarningMessage(
+        "Lunar: No OpenAI API key configured. Add your key under Settings → Lunar › Open AI Api Key.",
+        "Open Settings",
+      )
+      .then((choice) => {
+        if (choice === "Open Settings") {
+          void commands.executeCommand(
+            "workbench.action.openSettings",
+            "lunar.openAIApiKey",
+          );
+        }
+      });
+  }
+
   const clientOptions: LanguageClientOptions = {
-    // Register the server for plain text documents
     documentSelector: [{ scheme: "file" }],
     synchronize: {
-      // Notify the server about file changes to '.clientrc files contained in the workspace
       fileEvents: workspace.createFileSystemWatcher("**/.clientrc"),
     },
+    initializationOptions: initOptions,
   };
 
-  // Create the language client and start the client.
-  client = new LanguageClient(
-    "lunar",
-    "Lunar",
-    serverOptions,
-    clientOptions,
-  );
-
-  // Start the client. This will also launch the server
+  client = new LanguageClient("lunar", "Lunar", serverOptions, clientOptions);
   client.start();
+
+  // When the API key, model, or maxIssues changes, restart the server so the
+  // new values are picked up without requiring a window reload.
+  context.subscriptions.push(
+    workspace.onDidChangeConfiguration(async (e) => {
+      if (
+        e.affectsConfiguration("lunar.openAIApiKey") ||
+        e.affectsConfiguration("lunar.model") ||
+        e.affectsConfiguration("lunar.maxIssues")
+      ) {
+        await client.stop();
+        const fresh = getInitOptions();
+        Object.assign(clientOptions.initializationOptions as object, fresh);
+        client.start();
+      }
+    }),
+  );
 }
 
 export function deactivate(): Thenable<void> | undefined {

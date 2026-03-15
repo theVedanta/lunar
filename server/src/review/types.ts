@@ -109,7 +109,7 @@ export class ReviewEngine extends Context.Tag("ReviewEngine")<
       params: ReviewDocumentParams,
     ) => Effect.Effect<
       readonly ReviewIssue[],
-      MissingApiKeyError | RulesLoadError | ReviewRequestError
+      MissingApiKeyError | ReviewRequestError
     >;
   }
 >() {}
