@@ -1,7 +1,7 @@
 {
   "name": "lunar-lsp",
   "description": "AI-powered code review surfaced as LSP diagnostics — inline, in your editor, as you write.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Vedanta Somnathe",
   "license": "MIT",
   "engines": {
