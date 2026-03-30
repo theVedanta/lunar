@@ -28,12 +28,12 @@ A stale-result guard ensures that if the document changes while the model is thi
 
 ## Severity Levels
 
-| Level | What It Means |
-|---|---|
-| Error | High-impact issue — security risk, broken contract, data loss potential |
-| Warning | Should be fixed — logic smell, missing error handling, confusing code |
-| Info | Worth considering — maintainability, testability, documentation gaps |
-| Hint | Low-priority suggestion — naming, minor clarity improvement |
+| Level   | What It Means                                                           |
+| ------- | ----------------------------------------------------------------------- |
+| Error   | High-impact issue — security risk, broken contract, data loss potential |
+| Warning | Should be fixed — logic smell, missing error handling, confusing code   |
+| Info    | Worth considering — maintainability, testability, documentation gaps    |
+| Hint    | Low-priority suggestion — naming, minor clarity improvement             |
 
 ---
 
@@ -41,18 +41,18 @@ A stale-result guard ensures that if the document changes while the model is thi
 
 The AI reviews against a fixed ruleset. It cannot hallucinate rule IDs.
 
-| Rule | What It Flags |
-|---|---|
-| `review/clarity` | Unclear intent, confusing control flow |
-| `review/naming` | Misleading or overly generic names |
-| `review/error-handling` | Swallowed exceptions, missing error paths |
-| `review/security-footgun` | Injection risks, exposed secrets, unsafe operations |
-| `review/api-contract` | Type mismatches, nullability violations, broken invariants |
-| `review/complexity` | Deep nesting, functions that need decomposition |
-| `review/perf-hotpath` | Redundant work in loops, unnecessary allocations or I/O |
-| `review/maintainability` | Tight coupling, implicit dependencies, hidden state |
-| `review/testing-gap` | Logic that is likely untested and hard to test |
-| `review/docs-mismatch` | Comments that contradict the code, missing critical docs |
+| Rule                      | What It Flags                                              |
+| ------------------------- | ---------------------------------------------------------- |
+| `review/clarity`          | Unclear intent, confusing control flow                     |
+| `review/naming`           | Misleading or overly generic names                         |
+| `review/error-handling`   | Swallowed exceptions, missing error paths                  |
+| `review/security-footgun` | Injection risks, exposed secrets, unsafe operations        |
+| `review/api-contract`     | Type mismatches, nullability violations, broken invariants |
+| `review/complexity`       | Deep nesting, functions that need decomposition            |
+| `review/perf-hotpath`     | Redundant work in loops, unnecessary allocations or I/O    |
+| `review/maintainability`  | Tight coupling, implicit dependencies, hidden state        |
+| `review/testing-gap`      | Logic that is likely untested and hard to test             |
+| `review/docs-mismatch`    | Comments that contradict the code, missing critical docs   |
 
 ---
 
@@ -112,10 +112,10 @@ This makes Lunar useful as a feedback loop for agentic coding workflows: write c
 
 ## Configuration
 
-| Setting | Default | Description |
-|---|---|---|
-| `lunar-lsp.maxNumberOfProblems` | `100` | Max diagnostics shown per file |
-| `lunar-lsp.trace.server` | `"off"` | LSP message tracing for debugging |
+| Setting                         | Default | Description                       |
+| ------------------------------- | ------- | --------------------------------- |
+| `lunar-lsp.maxNumberOfProblems` | `100`   | Max diagnostics shown per file    |
+| `lunar-lsp.trace.server`        | `"off"` | LSP message tracing for debugging |
 
 ---
 
@@ -125,3 +125,31 @@ This makes Lunar useful as a feedback loop for agentic coding workflows: write c
 - [Zod](https://zod.dev) — schema validation for both rules and model output
 - [@tanstack/pacer](https://tanstack.com/pacer) — per-document async debouncing
 - [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — LSP server implementation
+
+# Installations
+
+## Cursor / VSCode
+
+```zsh
+cursor --install-extension '/Users/vedanta/development/lunar/lunar-lsp-0.1.0.vsix'
+
+# or VSCode
+
+code --install-extension '/Users/vedanta/development/lunar/lunar-lsp-0.1.0.vsix'
+```
+
+## Neovim (Lazy.nvim)
+
+```zsh
+# https://github.com/theVedanta/lunar-nvim
+
+{
+  "theVedanta/lunar-nvim",
+  cond = function()
+    return vim.fn.executable("lunar-lsp") == 1
+  end,
+  config = function()
+    require("lunar").setup()
+  end,
+}
+```
